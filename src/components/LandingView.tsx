@@ -18,7 +18,8 @@ import { ResilientImage } from './ResilientImage';
 interface LandingViewProps {
   resources: Resource[];
   currentUser: User | null;
-  onLoginAs: (userId: string, targetView?: string) => Promise<void>;
+  onOpenLogin: (prefilledEmail?: string) => void;
+  onOpenWorkspace: () => void;
   onOpenCatalogue: () => void;
   onSelectResource: (resource: Resource) => void;
 }
@@ -26,7 +27,8 @@ interface LandingViewProps {
 export const LandingView: React.FC<LandingViewProps> = ({
   resources,
   currentUser,
-  onLoginAs,
+  onOpenLogin,
+  onOpenWorkspace,
   onOpenCatalogue,
   onSelectResource,
 }) => {
@@ -78,14 +80,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
         <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
-            onClick={() =>
-              currentUser
-                ? onOpenCatalogue()
-                : onLoginAs('usr-stu-1', 'student-dashboard')
-            }
+            onClick={() => (currentUser ? onOpenWorkspace() : onOpenLogin())}
             className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 transition-colors whitespace-nowrap shrink-0"
           >
-            {currentUser ? `Go to Workspace (${currentUser.name})` : 'Sign In as Demo Student'}
+            {currentUser ? `Go to Workspace (${currentUser.name})` : 'Sign In to Campus Workspace'}
           </button>
         </div>
       </header>
@@ -121,17 +119,17 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onLoginAs('usr-stu-1', 'student-dashboard')}
+                  onClick={() => onOpenLogin('aarav.mehta@school-demo.edu')}
                   className="px-4 py-2.5 text-xs font-semibold text-slate-900 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors whitespace-nowrap shrink-0"
                 >
-                  Student Demo (Aarav Mehta)
+                  Sign In as Student (Aarav)
                 </button>
                 <button
                   type="button"
-                  onClick={() => onLoginAs('usr-mgr-1', 'manager-dashboard')}
+                  onClick={() => onOpenLogin('p.sharma@school-demo.edu')}
                   className="px-4 py-2.5 text-xs font-semibold text-slate-800 bg-slate-100 rounded-md hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0"
                 >
-                  Teacher / Lab Manager Demo
+                  Sign In as Teacher / Manager
                 </button>
               </div>
 
@@ -275,7 +273,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => onLoginAs('usr-stu-1', 'student-dashboard')}
+                onClick={() => onOpenLogin('aarav.mehta@school-demo.edu')}
                 className="w-full py-2 px-4 text-xs font-semibold text-white bg-slate-900 rounded-md hover:bg-slate-800 transition-colors"
               >
                 Sign In as Student (Aarav)
@@ -299,7 +297,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => onLoginAs('usr-mgr-1', 'manager-dashboard')}
+                onClick={() => onOpenLogin('p.sharma@school-demo.edu')}
                 className="w-full py-2 px-4 text-xs font-semibold text-white bg-teal-700 rounded-md hover:bg-teal-800 transition-colors"
               >
                 Sign In as Lab Manager (Mrs. Sharma)
@@ -323,7 +321,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => onLoginAs('usr-adm-1', 'audit')}
+                onClick={() => onOpenLogin('ananya.deshmukh@school-demo.edu')}
                 className="w-full py-2 px-4 text-xs font-semibold text-slate-900 bg-white border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
               >
                 Sign In as Administrator (Dr. Deshmukh)
@@ -382,17 +380,17 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => onLoginAs('usr-stu-1', 'student-dashboard')}
+            onClick={() => onOpenLogin('aarav.mehta@school-demo.edu')}
             className="hover:text-slate-900 underline"
           >
-            Student View
+            Student Sign In
           </button>
           <button
             type="button"
-            onClick={() => onLoginAs('usr-mgr-1', 'manager-dashboard')}
+            onClick={() => onOpenLogin('p.sharma@school-demo.edu')}
             className="hover:text-slate-900 underline"
           >
-            Manager View
+            Manager Sign In
           </button>
         </div>
       </footer>

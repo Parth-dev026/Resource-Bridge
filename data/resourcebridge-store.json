@@ -392,6 +392,27 @@
   ],
   "bookings": [
     {
+      "id": "BKG-2026-814",
+      "resourceId": "res-arduino-01",
+      "resourceName": "Arduino Starter & Sensor Learning Kit (Kit #04)",
+      "resourceCode": "SCH-ARD-04",
+      "resourceLocation": "Electronics & Robotics Room · Shelf B (Storage Box 4)",
+      "studentId": "usr-test-4429",
+      "studentName": "Booking Test Student",
+      "studentDepartment": "Tech Department",
+      "date": "2026-10-30",
+      "startTime": "10:00",
+      "durationHours": 2,
+      "endTime": "12:00",
+      "purpose": "Robotics automation testing",
+      "courseOrProjectCode": "TECH-101",
+      "supervisorName": "Mrs. Sharma",
+      "agreedToSafetyRules": true,
+      "selfDeclaredEligible": true,
+      "status": "Pending",
+      "createdAt": "2026-10-29T09:00:56.249Z"
+    },
+    {
       "id": "BKG-2026-813",
       "resourceId": "res-arduino-01",
       "resourceName": "Arduino Starter & Sensor Learning Kit (Kit #04)",
@@ -787,6 +808,17 @@
     }
   ],
   "auditEvents": [
+    {
+      "id": "AUD-56249-37",
+      "timestamp": "2026-10-29T09:00:56.249Z",
+      "actorId": "usr-test-4429",
+      "actorName": "Booking Test Student",
+      "actorRole": "student",
+      "actionType": "BOOKING_SUBMITTED",
+      "targetType": "Booking",
+      "targetId": "BKG-2026-814",
+      "summary": "Submitted booking request BKG-2026-814 for SCH-ARD-04 on 2026-10-30 (10:00–12:00 IST)."
+    },
     {
       "id": "AUD-99913-25",
       "timestamp": "2026-10-29T07:38:19.913Z",

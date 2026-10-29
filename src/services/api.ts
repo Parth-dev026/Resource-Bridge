@@ -70,42 +70,52 @@ class ApiService {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (res.status === 401) {
+        this.setSession(null, null);
+      }
       throw new Error(data.error || `Request failed with status ${res.status}`);
     }
     return data as T;
   }
 
-  async fetchState(): Promise<{ viewer: User | null; state: AppDatabaseState }> {
-    try {
-      const result = await this.request<{ viewer: User | null; state: AppDatabaseState }>('/api/state');
-      // If we had a saved userId in localStorage and server restarted in-memory session map, re-authenticate seamlessly
-      const savedUserId = this.getSavedUserId();
-      if (!result.viewer && savedUserId) {
-        const relogin = await this.login(savedUserId);
-        return { viewer: relogin.user, state: relogin.state };
+  async validateSession(): Promise<{ viewer: User | null; state: AppDatabaseState }> {
+    if (supabase) {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error || !session) {
+          this.setSession(null, null);
+        } else {
+          // Cryptographically verify with Supabase Auth server
+          const { error: userError } = await supabase.auth.getUser();
+          if (userError) {
+            await supabase.auth.signOut().catch(() => {});
+            this.setSession(null, null);
+          } else {
+            this.token = session.access_token;
+            localStorage.setItem(SESSION_TOKEN_KEY, session.access_token);
+          }
+        }
+      } catch {
+        this.setSession(null, null);
       }
-      return result;
-    } catch {
-      return {
-        viewer: null,
-        state: structuredClone(INITIAL_DATABASE_STATE),
-      };
     }
+    return this.fetchState();
   }
 
-  async login(userIdOrEmail: string): Promise<{ token: string; user: User; state: AppDatabaseState }> {
-    const payload = userIdOrEmail.includes('@') ? { email: userIdOrEmail } : { userId: userIdOrEmail };
-    const result = await this.request<{ token: string; user: User; state: AppDatabaseState }>('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    this.setSession(result.token, result.user.id);
+  async fetchState(): Promise<{ viewer: User | null; state: AppDatabaseState }> {
+    const result = await this.request<{ viewer: User | null; state: AppDatabaseState }>('/api/state');
     return result;
+  }
+
+  async login(_userIdOrEmail: string): Promise<{ token: string; user: User; state: AppDatabaseState }> {
+    throw new Error(
+      'Passwordless login is disabled for security. Please sign in using your campus email and password with Supabase Auth.'
+    );
   }
 
   async logout(): Promise<void> {
     try {
-      await this.request('/api/auth/logout', { method: 'POST' });
+      await this.request('/api/auth/logout', { method: 'POST' }).catch(() => {});
     } finally {
       this.setSession(null, null);
     }
@@ -247,16 +257,23 @@ class ApiService {
     if (!supabase) {
       throw new Error('Supabase client is not configured in this environment.');
     }
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
     if (error || !data.session) {
-      throw new Error(error?.message || 'Supabase authentication failed.');
+      throw new Error(error?.message || 'Supabase authentication failed. Please check your credentials.');
     }
     this.token = data.session.access_token;
     localStorage.setItem(SESSION_TOKEN_KEY, data.session.access_token);
     // Fetch state with verified token
     const res = await this.fetchState();
     if (!res.viewer) {
-      throw new Error('User profile not found in campus database.');
+      await supabase.auth.signOut().catch(() => {});
+      this.setSession(null, null);
+      throw new Error(
+        `User '${email}' was authenticated by Supabase Auth, but no authorized campus profile was found in the database. Please contact your campus administrator.`
+      );
     }
     this.setSession(data.session.access_token, res.viewer.id);
     return { user: res.viewer, state: res.state };

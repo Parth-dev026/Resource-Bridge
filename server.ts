@@ -183,11 +183,23 @@ async function authenticateUser(req: AuthenticatedRequest, _res: Response, next:
       const { data, error } = await supabaseAuthVerifier.auth.getUser(token);
       if (!error && data?.user) {
         // Query profile from database
-        const { data: dbUser } = await supabaseAdmin!
-          .from('users')
-          .select('*')
-          .or(`auth_user_id.eq.${data.user.id},email.eq.${data.user.email}`)
-          .maybeSingle();
+        let dbUser = null;
+        if (supabaseAdmin) {
+          const { data: userRecord } = await supabaseAdmin
+            .from('users')
+            .select('*')
+            .or(`auth_user_id.eq.${data.user.id},email.eq.${data.user.email}`)
+            .maybeSingle();
+          dbUser = userRecord;
+        }
+
+        if (!dbUser) {
+          dbUser = dbState.users.find(
+            (u) =>
+              (u as any).auth_user_id === data.user.id ||
+              u.email.toLowerCase() === (data.user.email || '').toLowerCase()
+          );
+        }
 
         if (dbUser) {
           req.user = {
@@ -195,23 +207,25 @@ async function authenticateUser(req: AuthenticatedRequest, _res: Response, next:
             name: dbUser.name,
             email: dbUser.email,
             department: dbUser.department,
-            academicStanding: dbUser.academic_standing,
+            academicStanding: dbUser.academic_standing || dbUser.academicStanding,
             role: dbUser.role as UserRole,
-            completedSafetyModules: Array.isArray(dbUser.completed_safety_modules)
-              ? dbUser.completed_safety_modules
+            completedSafetyModules: Array.isArray(dbUser.completed_safety_modules || dbUser.completedSafetyModules)
+              ? (dbUser.completed_safety_modules || dbUser.completedSafetyModules)
               : [],
-            activeRestrictions: dbUser.active_restrictions,
+            activeRestrictions: dbUser.active_restrictions ?? dbUser.activeRestrictions ?? null,
           };
           return next();
+        } else {
+          console.warn(`[Supabase Auth] Authenticated user ${data.user.email} has no registered profile in campus database.`);
         }
       }
     } catch {
-      // Token is not a Supabase JWT; fall through to demo session if permitted
+      // Invalid token
     }
   }
 
-  // 2. Demo Mode Session Lookup
-  if (ENABLE_DEMO_MODE) {
+  // 2. Demo Mode Session Lookup (Strictly restricted to offline fallback when Supabase is NOT configured)
+  if (!isSupabaseConfigured && ENABLE_DEMO_MODE) {
     const session = activeSessions.get(token);
     if (session) {
       const found = dbState.users.find((u) => u.id === session.userId);
@@ -331,27 +345,10 @@ async function startServer() {
     res.json({ accounts });
   });
 
-  app.post('/api/auth/login', (req, res) => {
-    if (!ENABLE_DEMO_MODE) {
-      res.status(403).json({ error: 'Direct demo switching disabled in production. Please use Supabase Auth.' });
-      return;
-    }
-
-    const { userId, email } = req.body as { userId?: string; email?: string };
-    const user = dbState.users.find(
-      (u) => (userId && u.id === userId) || (email && u.email.toLowerCase() === email.toLowerCase())
-    );
-    if (!user) {
-      res.status(404).json({ error: 'Account not found in campus directory.' });
-      return;
-    }
-
-    const token = crypto.randomBytes(24).toString('hex');
-    activeSessions.set(token, { userId: user.id, issuedAt: Date.now() });
-    res.json({
-      token,
-      user,
-      state: sanitizeStateForViewer(dbState, user),
+  app.post('/api/auth/login', (_req, res) => {
+    res.status(401).json({
+      error:
+        'Passwordless login is disabled for campus security. Please sign in with your email and password via Supabase Auth.',
     });
   });
 
