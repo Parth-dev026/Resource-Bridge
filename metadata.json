@@ -1,0 +1,6 @@
+{
+  "name": "ResourceBridge — Campus Equipment & Laboratory Sharing",
+  "description": "Fair, conflict-free equipment and laboratory resource sharing platform for colleges and educational communities with role-based approvals, check-in/out condition reporting, and audit trails.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
