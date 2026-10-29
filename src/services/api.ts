@@ -12,7 +12,6 @@ import {
 } from '../types';
 
 const SESSION_TOKEN_KEY = 'rb_session_token_v1';
-const SESSION_USER_ID_KEY = 'rb_session_user_id_v1';
 
 class ApiService {
   private token: string | null = localStorage.getItem(SESSION_TOKEN_KEY);
@@ -21,22 +20,17 @@ class ApiService {
     return this.token;
   }
 
-  getSavedUserId(): string | null {
-    return localStorage.getItem(SESSION_USER_ID_KEY);
-  }
-
   isSupabaseEnabled(): boolean {
     return isSupabaseConfigured;
   }
 
-  private setSession(token: string | null, userId: string | null) {
+  private setSession(token: string | null) {
     this.token = token;
-    if (token && userId) {
+    if (token) {
       localStorage.setItem(SESSION_TOKEN_KEY, token);
-      localStorage.setItem(SESSION_USER_ID_KEY, userId);
     } else {
       localStorage.removeItem(SESSION_TOKEN_KEY);
-      localStorage.removeItem(SESSION_USER_ID_KEY);
+      localStorage.removeItem('rb_session_user_id_v1');
     }
   }
 
@@ -52,6 +46,7 @@ class ApiService {
         const { data } = await supabase.auth.getSession();
         if (data.session?.access_token) {
           headers['Authorization'] = `Bearer ${data.session.access_token}`;
+          this.token = data.session.access_token;
         }
       } catch {
         // Fall back to stored session token
@@ -62,7 +57,6 @@ class ApiService {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-
     const res = await fetch(path, {
       ...options,
       headers,
@@ -71,7 +65,7 @@ class ApiService {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401) {
-        this.setSession(null, null);
+        this.setSession(null);
       }
       throw new Error(data.error || `Request failed with status ${res.status}`);
     }
@@ -83,22 +77,24 @@ class ApiService {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
         if (error || !session) {
-          this.setSession(null, null);
+          this.setSession(null);
         } else {
-          // Cryptographically verify with Supabase Auth server
+          // Cryptographically verify identity with Supabase Auth server
           const { error: userError } = await supabase.auth.getUser();
           if (userError) {
             await supabase.auth.signOut().catch(() => {});
-            this.setSession(null, null);
+            this.setSession(null);
           } else {
-            this.token = session.access_token;
-            localStorage.setItem(SESSION_TOKEN_KEY, session.access_token);
+            this.setSession(session.access_token);
           }
         }
       } catch {
-        this.setSession(null, null);
+        this.setSession(null);
       }
+    } else {
+      this.setSession(null);
     }
+
     return this.fetchState();
   }
 
@@ -109,7 +105,7 @@ class ApiService {
 
   async login(_userIdOrEmail: string): Promise<{ token: string; user: User; state: AppDatabaseState }> {
     throw new Error(
-      'Passwordless login is disabled for security. Please sign in using your campus email and password with Supabase Auth.'
+      'Passwordless login is disabled for campus security. Please sign in using your campus email and password with Supabase Auth.'
     );
   }
 
@@ -117,7 +113,15 @@ class ApiService {
     try {
       await this.request('/api/auth/logout', { method: 'POST' }).catch(() => {});
     } finally {
-      this.setSession(null, null);
+      this.setSession(null);
+      if (typeof window !== 'undefined') {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith('sb-') || key.startsWith('rb_'))) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
     }
   }
 
@@ -278,7 +282,7 @@ class ApiService {
     const res = await this.fetchState();
     if (!res.viewer) {
       await supabase.auth.signOut().catch(() => {});
-      this.setSession(null, null);
+      this.setSession(null);
       throw new Error(
         'User was authenticated by Supabase Auth, but no active campus organisation membership was found. Access is restricted to organisation-authorised members.'
       );
@@ -286,7 +290,7 @@ class ApiService {
 
     if (res.viewer.status === 'inactive') {
       await supabase.auth.signOut().catch(() => {});
-      this.setSession(null, null);
+      this.setSession(null);
       throw new Error(
         'Your organisation membership is currently inactive. Please contact your campus administrator for reactivation.'
       );
@@ -294,7 +298,7 @@ class ApiService {
 
     if (res.viewer.status === 'invited') {
       await supabase.auth.signOut().catch(() => {});
-      this.setSession(null, null);
+      this.setSession(null);
       throw new Error(
         'Your account invitation is pending password setup. Please use the secure setup link sent to your email.'
       );
@@ -302,13 +306,13 @@ class ApiService {
 
     if (res.viewer.emailVerified === false) {
       await supabase.auth.signOut().catch(() => {});
-      this.setSession(null, null);
+      this.setSession(null);
       throw new Error(
         'Your email address has not been verified. Please confirm your email address before signing in.'
       );
     }
 
-    this.setSession(data.session.access_token, res.viewer.id);
+    this.setSession(data.session.access_token);
     return { user: res.viewer, state: res.state };
   }
 

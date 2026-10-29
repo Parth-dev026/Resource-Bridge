@@ -333,6 +333,17 @@ export function App() {
     ? dbState.resources.find((r) => r.id === selectedResourceForModal.id) || selectedResourceForModal
     : null;
 
+  // Full-page session check loading screen
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-center">
+        <div className="w-10 h-10 border-2 border-teal-500 border-t-transparent rounded-full animate-spin mb-3" />
+        <div className="text-white font-bold text-sm tracking-wide">ResourceBridge</div>
+        <div className="text-slate-400 text-xs mt-1">Verifying campus credentials &amp; session...</div>
+      </div>
+    );
+  }
+
   // Render full-page LoginView when activeView is 'login'
   if (activeView === 'login') {
     return (

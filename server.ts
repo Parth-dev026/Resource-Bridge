@@ -125,13 +125,277 @@ export function intervalsOverlap(startA: string, endA: string, startB: string, e
   return a0 < b1 && b0 < a1;
 }
 
-function appendAudit(
+function mapUserFromDb(row: any): User {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    department: row.department,
+    academicStanding: row.academic_standing || row.academicStanding || 'Student in Good Standing',
+    role: row.role as UserRole,
+    completedSafetyModules: Array.isArray(row.completed_safety_modules)
+      ? row.completed_safety_modules
+      : Array.isArray(row.completedSafetyModules)
+      ? row.completedSafetyModules
+      : [],
+    activeRestrictions: row.active_restrictions ?? row.activeRestrictions ?? null,
+    organizationId: row.organization_id || row.organizationId || 'org-greenwood-1',
+    organizationName: row.organization_name || row.organizationName || 'Greenwood College & Senior School',
+    status: (row.status as any) || 'active',
+    emailVerified: row.email_verified !== undefined ? Boolean(row.email_verified) : true,
+  };
+}
+
+function mapResourceFromDb(row: any): Resource {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    category: row.category,
+    resourceType: row.resource_type || row.resourceType || 'Equipment',
+    location: row.location,
+    building: row.building || '',
+    description: row.description || '',
+    imageUrl: row.image_url || row.imageUrl || '',
+    status: row.status,
+    conditionSummary: row.condition_summary || row.conditionSummary || '',
+    operatingHours: row.operating_hours || row.operatingHours || '08:00 – 18:00 (Mon–Fri)',
+    availableTimeSlots: Array.isArray(row.available_time_slots)
+      ? row.available_time_slots
+      : Array.isArray(row.availableTimeSlots)
+      ? row.availableTimeSlots
+      : ['08:00', '10:00', '12:00', '14:00', '16:00'],
+    minDurationHours: Number(row.min_duration_hours ?? row.minDurationHours ?? 1),
+    maxDurationHours: Number(row.max_duration_hours ?? row.maxDurationHours ?? 4),
+    weeklyLimitHoursPerStudent: Number(row.weekly_limit_hours_per_student ?? row.weeklyLimitHoursPerStudent ?? 8),
+    cooldownHours: Number(row.cooldown_hours ?? row.cooldownHours ?? 6),
+    eligibilityRequirements: Array.isArray(row.eligibility_requirements)
+      ? row.eligibility_requirements
+      : Array.isArray(row.eligibilityRequirements)
+      ? row.eligibilityRequirements
+      : [],
+    requiredSafetyModule: row.required_safety_module || row.requiredSafetyModule || 'Lab Safety & Basic Electrical Orientation',
+    safetyRules: Array.isArray(row.safety_rules)
+      ? row.safety_rules
+      : Array.isArray(row.safetyRules)
+      ? row.safetyRules
+      : [],
+    managerId: row.manager_id || row.managerId || '',
+    managerName: row.manager_name || row.managerName || '',
+    isDemoListing: Boolean(row.is_demo_listing ?? row.isDemoListing ?? false),
+    specifications: typeof row.specifications === 'object' && row.specifications !== null ? row.specifications : {},
+    organizationId: row.organization_id || row.organizationId || 'org-greenwood-1',
+  };
+}
+
+function mapBookingFromDb(row: any): BookingRequest {
+  return {
+    id: row.id,
+    resourceId: row.resource_id || row.resourceId,
+    resourceName: row.resource_name || row.resourceName,
+    resourceCode: row.resource_code || row.resourceCode,
+    resourceLocation: row.resource_location || row.resourceLocation,
+    studentId: row.student_id || row.studentId,
+    studentName: row.student_name || row.studentName,
+    studentDepartment: row.student_department || row.studentDepartment,
+    date: row.date,
+    startTime: row.start_time_text || row.startTime,
+    endTime: row.end_time_text || row.endTime,
+    durationHours: Number(row.duration_hours ?? row.durationHours ?? 1),
+    purpose: row.purpose,
+    courseOrProjectCode: row.course_or_project_code || row.courseOrProjectCode || '',
+    supervisorName: row.supervisor_name || row.supervisorName || '',
+    agreedToSafetyRules: Boolean(row.agreed_to_safety_rules ?? row.agreedToSafetyRules ?? true),
+    selfDeclaredEligible: Boolean(row.self_declared_eligible ?? row.selfDeclaredEligible ?? true),
+    status: row.status,
+    managerDecisionNote: row.manager_decision_note || row.managerDecisionNote,
+    decidedByName: row.decided_by_name || row.decidedByName,
+    decidedAt: row.decided_at || row.decidedAt,
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    checkInAt: row.check_in_at || row.checkInAt,
+    checkOutAt: row.check_out_at || row.checkOutAt,
+    beforeConditionReport: row.before_condition_report || row.beforeConditionReport,
+    afterConditionReport: row.after_condition_report || row.afterConditionReport,
+    flaggedMissingReport: Boolean(row.flagged_missing_report ?? row.flaggedMissingReport ?? false),
+    organizationId: row.organization_id || row.organizationId || 'org-greenwood-1',
+  };
+}
+
+function mapIncidentFromDb(row: any): IncidentReport {
+  return {
+    id: row.id,
+    resourceId: row.resource_id || row.resourceId,
+    resourceName: row.resource_name || row.resourceName,
+    resourceCode: row.resource_code || row.resourceCode,
+    bookingId: row.booking_id || row.bookingId || undefined,
+    reportedByUserId: row.reported_by_user_id || row.reportedByUserId,
+    reportedByName: row.reported_by_name || row.reportedByName,
+    reportedByRole: row.reported_by_role || row.reportedByRole,
+    category: row.category,
+    severity: row.severity,
+    description: row.description,
+    supportingImageRef: row.supporting_image_ref || row.supportingImageRef || undefined,
+    status: row.status,
+    managerReviewNotes: row.manager_review_notes || row.managerReviewNotes,
+    reviewedByName: row.reviewed_by_name || row.reviewedByName,
+    humanReviewRequired: Boolean(row.human_review_required ?? row.humanReviewRequired ?? true),
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+    updatedAt: row.updated_at || row.updatedAt || new Date().toISOString(),
+    organizationId: row.organization_id || row.organizationId || 'org-greenwood-1',
+  };
+}
+
+function mapAuditEventFromDb(row: any): AuditEvent {
+  return {
+    id: row.id,
+    timestamp: row.timestamp,
+    actorId: row.actor_id || row.actorId,
+    actorName: row.actor_name || row.actorName,
+    actorRole: row.actor_role || row.actorRole,
+    actionType: row.action_type || row.actionType,
+    targetType: row.target_type || row.targetType,
+    targetId: row.target_id || row.targetId,
+    summary: row.summary,
+    metadata: row.metadata,
+    organizationId: row.organization_id || row.organizationId || 'org-greenwood-1',
+  };
+}
+
+function mapPolicyFromDb(row: any): PlatformPolicySettings {
+  return {
+    maxActivePendingRequestsPerStudent: Number(
+      row.max_active_pending_requests_per_student ?? row.maxActivePendingRequestsPerStudent ?? 4
+    ),
+    defaultWeeklyHoursCapPerStudent: Number(
+      row.default_weekly_hours_cap_per_student ?? row.defaultWeeklyHoursCapPerStudent ?? 8
+    ),
+    defaultCooldownHoursBetweenBookings: Number(
+      row.default_cooldown_hours_between_bookings ?? row.defaultCooldownHoursBetweenBookings ?? 6
+    ),
+    requireBeforeAndAfterConditionReports: Boolean(
+      row.require_before_and_after_condition_reports ?? row.requireBeforeAndAfterConditionReports ?? true
+    ),
+    enforceHumanReviewForAllIncidents: Boolean(
+      row.enforce_human_review_for_all_incidents ?? row.enforceHumanReviewForAllIncidents ?? true
+    ),
+    allowWaitlistOnConflict: Boolean(
+      row.allow_waitlist_on_conflict ?? row.allowWaitlistOnConflict ?? true
+    ),
+    institutionName: row.institution_name || row.institutionName || 'Greenwood College & Senior School',
+    environmentMode: 'Single-Instance Server & Demo Dataset',
+  };
+}
+
+let hasOrganizationSupport = false;
+
+async function checkOrganizationSupport(): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+  try {
+    const { error } = await supabaseAdmin.from('organizations').select('id').limit(1);
+    hasOrganizationSupport = !error;
+  } catch {
+    hasOrganizationSupport = false;
+  }
+  return hasOrganizationSupport;
+}
+
+async function loadStateFromSupabase(): Promise<AppDatabaseState> {
+  if (!supabaseAdmin) {
+    throw new Error('Supabase client is not available on server.');
+  }
+
+  await checkOrganizationSupport();
+
+  const [
+    resourcesRes,
+    bookingsRes,
+    incidentsRes,
+    auditRes,
+    usersRes,
+    policyRes,
+  ] = await Promise.all([
+    supabaseAdmin.from('resources').select('*'),
+    supabaseAdmin.from('bookings').select('*').order('date', { ascending: true }),
+    supabaseAdmin.from('incidents').select('*').order('created_at', { ascending: false }),
+    supabaseAdmin.from('audit_events').select('*').order('timestamp', { ascending: false }).limit(200),
+    supabaseAdmin.from('users').select('*'),
+    supabaseAdmin.from('platform_policy').select('*').eq('id', 1).maybeSingle(),
+  ]);
+
+  if (resourcesRes.error) {
+    throw new Error(`Failed to load resources from Supabase: ${resourcesRes.error.message}`);
+  }
+  if (bookingsRes.error) {
+    throw new Error(`Failed to load bookings from Supabase: ${bookingsRes.error.message}`);
+  }
+  if (incidentsRes.error) {
+    throw new Error(`Failed to load incidents from Supabase: ${incidentsRes.error.message}`);
+  }
+  if (auditRes.error) {
+    throw new Error(`Failed to load audit events from Supabase: ${auditRes.error.message}`);
+  }
+  if (usersRes.error) {
+    throw new Error(`Failed to load users from Supabase: ${usersRes.error.message}`);
+  }
+
+  let organizations: any[] = [];
+  let invitations: any[] = [];
+  if (hasOrganizationSupport) {
+    try {
+      const { data: orgData } = await supabaseAdmin.from('organizations').select('*');
+      if (orgData && orgData.length > 0) organizations = orgData;
+    } catch {}
+    try {
+      const { data: invData } = await supabaseAdmin.from('organization_invitations').select('*');
+      if (invData && invData.length > 0) invitations = invData;
+    } catch {}
+  }
+
+  if (organizations.length === 0) {
+    organizations = [
+      {
+        id: 'org-greenwood-1',
+        name: 'Greenwood College & Senior School',
+        slug: 'greenwood-college',
+        description: 'Unified campus sharing facility for STEM, robotics, and computing',
+      },
+    ];
+  }
+
+  const policy = policyRes.data
+    ? mapPolicyFromDb(policyRes.data)
+    : INITIAL_DATABASE_STATE.policy;
+
+  return {
+    policy,
+    resources: (resourcesRes.data || []).map(mapResourceFromDb),
+    bookings: (bookingsRes.data || []).map(mapBookingFromDb),
+    incidents: (incidentsRes.data || []).map(mapIncidentFromDb),
+    auditEvents: (auditRes.data || []).map(mapAuditEventFromDb),
+    users: (usersRes.data || []).map(mapUserFromDb),
+    organizations,
+    invitations: invitations.map((inv) => ({
+      id: inv.id,
+      organizationId: inv.organization_id,
+      email: inv.email,
+      role: inv.role,
+      name: inv.name,
+      department: inv.department,
+      invitedByUserId: inv.invited_by_user_id,
+      expiresAt: inv.expires_at,
+      status: inv.status,
+      createdAt: inv.created_at,
+    })),
+  };
+}
+
+async function appendAudit(
   actor: User,
   actionType: AuditEvent['actionType'],
   targetType: AuditEvent['targetType'],
   targetId: string,
   summary: string
-) {
+): Promise<AuditEvent> {
   const event: AuditEvent = {
     id: `AUD-${Date.now().toString().slice(-5)}-${Math.floor(Math.random() * 90 + 10)}`,
     timestamp: new Date().toISOString(),
@@ -144,11 +408,9 @@ function appendAudit(
     summary,
     organizationId: actor.organizationId || 'org-greenwood-1',
   };
-  dbState.auditEvents.unshift(event);
 
-  // If Supabase is connected, record in PostgreSQL immutable audit table
-  if (supabaseAdmin) {
-    supabaseAdmin.from('audit_events').insert({
+  if (isSupabaseConfigured && supabaseAdmin) {
+    const payload: any = {
       id: event.id,
       timestamp: event.timestamp,
       actor_id: event.actorId,
@@ -158,11 +420,23 @@ function appendAudit(
       target_type: event.targetType,
       target_id: event.targetId,
       summary: event.summary,
-      organization_id: event.organizationId,
-    }).then(({ error }) => {
-      if (error) console.warn('[Supabase Audit Event notice]:', error.message);
-    });
+    };
+    if (hasOrganizationSupport) {
+      payload.organization_id = event.organizationId;
+    }
+    const { error } = await supabaseAdmin.from('audit_events').insert(payload);
+    if (error) {
+      console.warn('[Supabase Audit Event Error]:', error.message);
+    }
   }
+
+  // Keep in-memory cache in sync for instant reads
+  dbState.auditEvents.unshift(event);
+  if (!isSupabaseConfigured) {
+    saveDatabase(dbState);
+  }
+
+  return event;
 }
 
 interface AuthenticatedRequest extends Request {
@@ -180,54 +454,32 @@ async function authenticateUser(req: AuthenticatedRequest, _res: Response, next:
   const token = authHeader.slice('Bearer '.length).trim();
   req.token = token;
 
-  // 1. Supabase Auth JWT Verification (Cryptographic token validation)
-  if (supabaseAuthVerifier) {
+  // 1. Supabase Auth JWT Verification (Cryptographic token validation against Supabase Auth)
+  if (isSupabaseConfigured && supabaseAdmin) {
     try {
-      const { data, error } = await supabaseAuthVerifier.auth.getUser(token);
+      const { data, error } = await supabaseAdmin.auth.getUser(token);
       if (!error && data?.user) {
-        // Query profile from database
-        let dbUser = null;
-        if (supabaseAdmin) {
-          const { data: userRecord } = await supabaseAdmin
-            .from('users')
-            .select('*')
-            .or(`auth_user_id.eq.${data.user.id},email.eq.${data.user.email}`)
-            .maybeSingle();
-          dbUser = userRecord;
-        }
+        // Query profile from PostgreSQL database by matching verified auth_user_id
+        const { data: userRecord, error: userDbError } = await supabaseAdmin
+          .from('users')
+          .select('*')
+          .eq('auth_user_id', data.user.id)
+          .maybeSingle();
 
-        if (!dbUser) {
-          dbUser = dbState.users.find(
-            (u) =>
-              (u as any).auth_user_id === data.user.id ||
-              u.email.toLowerCase() === (data.user.email || '').toLowerCase()
-          );
-        }
+        if (userRecord && !userDbError) {
+          const userOrgId = userRecord.organization_id || 'org-greenwood-1';
+          const userStatus = userRecord.status || 'active';
+          const emailVerified = Boolean(data.user.email_confirmed_at || userRecord.email_verified);
 
-        if (dbUser) {
-          const userOrgId = dbUser.organization_id || (dbUser as any).organizationId || 'org-greenwood-1';
-          const userStatus = dbUser.status || 'active';
-          const emailVerified = Boolean(data.user.email_confirmed_at || dbUser.email_verified || dbUser.emailVerified);
-
-          req.user = {
-            id: dbUser.id,
-            name: dbUser.name,
-            email: dbUser.email,
-            department: dbUser.department,
-            academicStanding: dbUser.academic_standing || dbUser.academicStanding,
-            role: dbUser.role as UserRole,
-            completedSafetyModules: Array.isArray(dbUser.completed_safety_modules || dbUser.completedSafetyModules)
-              ? (dbUser.completed_safety_modules || dbUser.completedSafetyModules)
-              : [],
-            activeRestrictions: dbUser.active_restrictions ?? dbUser.activeRestrictions ?? null,
-            organizationId: userOrgId,
-            organizationName: dbUser.organization_name || (dbUser as any).organizationName || 'Greenwood College & Senior School',
+          req.user = mapUserFromDb({
+            ...userRecord,
+            organization_id: userOrgId,
             status: userStatus,
-            emailVerified,
-          };
+            email_verified: emailVerified,
+          });
           return next();
         } else {
-          console.warn(`[Supabase Auth] Authenticated user ${data.user.email} has no registered profile in campus database.`);
+          console.warn(`[Supabase Auth] Authenticated user ${data.user.email} (UID: ${data.user.id}) has no profile linked in users table.`);
         }
       }
     } catch {
@@ -416,15 +668,30 @@ async function startServer() {
   });
 
   // --- STATE READ & RESET ---
-  app.get('/api/state', (req: AuthenticatedRequest, res) => {
-    const viewer = req.user;
-    res.json({
-      viewer: viewer ?? null,
-      state: sanitizeStateForViewer(dbState, viewer),
-    });
+  app.get('/api/state', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const viewer = req.user;
+      let state: AppDatabaseState;
+      if (isSupabaseConfigured) {
+        state = await loadStateFromSupabase();
+      } else if (ENABLE_DEMO_MODE) {
+        state = dbState;
+      } else {
+        res.status(500).json({ error: 'Database is not configured and demo mode is disabled.' });
+        return;
+      }
+
+      res.json({
+        viewer: viewer ?? null,
+        state: sanitizeStateForViewer(state, viewer),
+      });
+    } catch (err: any) {
+      console.error('[GET /api/state error]:', err.message);
+      res.status(500).json({ error: `Failed to load state from database: ${err.message}` });
+    }
   });
 
-  app.post('/api/demo/reset', requireRole(['admin']), (req: AuthenticatedRequest, res) => {
+  app.post('/api/demo/reset', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
     if (!ENABLE_DEMO_MODE) {
       res.status(403).json({ error: 'Dataset reset is disabled in production.' });
       return;
@@ -432,220 +699,251 @@ async function startServer() {
     dbState = structuredClone(INITIAL_DATABASE_STATE);
     saveDatabase(dbState);
     const viewer = req.user;
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
     res.json({
       message: 'Demonstration dataset reset to initial state.',
-      state: sanitizeStateForViewer(dbState, viewer),
+      state: sanitizeStateForViewer(currentState, viewer),
     });
   });
 
   // --- BOOKING WORKFLOW ---
-  app.post('/api/bookings', requireAuth, (req: AuthenticatedRequest, res: Response) => {
-    const user = req.user!;
-    if (user.activeRestrictions) {
-      res.status(403).json({
-        error: `Account currently has an active access restriction: ${user.activeRestrictions}`,
-      });
-      return;
-    }
+  app.post('/api/bookings', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const user = req.user!;
+      if (user.activeRestrictions) {
+        res.status(403).json({
+          error: `Account currently has an active access restriction: ${user.activeRestrictions}`,
+        });
+        return;
+      }
 
-    const {
-      resourceId,
-      date,
-      startTime,
-      durationHours,
-      purpose,
-      courseOrProjectCode,
-      supervisorName,
-      agreedToSafetyRules,
-      selfDeclaredEligible,
-    } = req.body as Partial<BookingRequest>;
+      const {
+        resourceId,
+        date,
+        startTime,
+        durationHours,
+        purpose,
+        courseOrProjectCode,
+        supervisorName,
+        agreedToSafetyRules,
+        selfDeclaredEligible,
+      } = req.body as Partial<BookingRequest>;
 
-    if (!resourceId || !date || !startTime || !durationHours || !purpose?.trim()) {
-      res.status(400).json({ error: 'Resource, date, start time, duration, and intended purpose are required.' });
-      return;
-    }
+      if (!resourceId || !date || !startTime || !durationHours || !purpose?.trim()) {
+        res.status(400).json({ error: 'Resource, date, start time, duration, and intended purpose are required.' });
+        return;
+      }
 
-    // Campus date validation (Asia/Kolkata IST)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      res.status(400).json({ error: 'Invalid booking date format. Use YYYY-MM-DD.' });
-      return;
-    }
-    const campusToday = getCampusTodayDate();
-    if (date < campusToday) {
-      res.status(400).json({
-        error: `Cannot book dates in the past. Current campus date (IST) is ${campusToday}.`,
-      });
-      return;
-    }
+      // Campus date validation (Asia/Kolkata IST)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        res.status(400).json({ error: 'Invalid booking date format. Use YYYY-MM-DD.' });
+        return;
+      }
+      const campusToday = getCampusTodayDate();
+      if (date < campusToday) {
+        res.status(400).json({
+          error: `Cannot book dates in the past. Current campus date (IST) is ${campusToday}.`,
+        });
+        return;
+      }
 
-    if (!agreedToSafetyRules || !selfDeclaredEligible) {
-      res.status(400).json({
-        error: 'You must review and confirm both the eligibility requirements and mandatory laboratory safety rules.',
-      });
-      return;
-    }
+      if (!agreedToSafetyRules || !selfDeclaredEligible) {
+        res.status(400).json({
+          error: 'You must review and confirm both the eligibility requirements and mandatory laboratory safety rules.',
+        });
+        return;
+      }
 
-    const resource = dbState.resources.find((r) => r.id === resourceId);
-    if (!resource) {
-      res.status(404).json({ error: 'Selected resource does not exist.' });
-      return;
-    }
+      // Read current state from database
+      const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
 
-    // Cross-organisation access guard
-    const userOrgId = user.organizationId || 'org-greenwood-1';
-    const resourceOrgId = resource.organizationId || 'org-greenwood-1';
-    if (userOrgId !== resourceOrgId) {
-      res.status(403).json({ error: 'Access denied: Selected resource belongs to a different organisation.' });
-      return;
-    }
+      const resource = currentState.resources.find((r) => r.id === resourceId);
+      if (!resource) {
+        res.status(404).json({ error: 'Selected resource does not exist.' });
+        return;
+      }
 
-    if (resource.status === 'Maintenance' || resource.status === 'Restricted') {
-      res.status(400).json({
-        error: `${resource.name} is currently marked as ${resource.status} and cannot accept new bookings for immediate use.`,
-      });
-      return;
-    }
+      // Cross-organisation access guard
+      const userOrgId = user.organizationId || 'org-greenwood-1';
+      const resourceOrgId = resource.organizationId || 'org-greenwood-1';
+      if (userOrgId !== resourceOrgId) {
+        res.status(403).json({ error: 'Access denied: Selected resource belongs to a different organisation.' });
+        return;
+      }
 
-    const dur = Number(durationHours);
-    if (!Number.isFinite(dur) || dur < resource.minDurationHours || dur > resource.maxDurationHours) {
-      res.status(400).json({
-        error: `Booking duration for ${resource.code} must be between ${resource.minDurationHours} and ${resource.maxDurationHours} hours.`,
-      });
-      return;
-    }
+      if (resource.status === 'Maintenance' || resource.status === 'Restricted') {
+        res.status(400).json({
+          error: `${resource.name} is currently marked as ${resource.status} and cannot accept new bookings for immediate use.`,
+        });
+        return;
+      }
 
-    const startHour = parseHour(startTime);
-    const endHour = startHour + dur;
-    if (endHour > 22 || startHour < 8) {
-      res.status(400).json({
-        error: 'Requested time window falls outside standard campus operating hours (08:00–22:00).',
-      });
-      return;
-    }
-    const endTime = formatHour(endHour);
+      const dur = Number(durationHours);
+      if (!Number.isFinite(dur) || dur < resource.minDurationHours || dur > resource.maxDurationHours) {
+        res.status(400).json({
+          error: `Booking duration for ${resource.code} must be between ${resource.minDurationHours} and ${resource.maxDurationHours} hours.`,
+        });
+        return;
+      }
 
-    // Fair access check 1: Max active pending requests per student
-    const studentPendingCount = dbState.bookings.filter(
-      (b) => b.studentId === user.id && b.status === 'Pending'
-    ).length;
-    if (studentPendingCount >= dbState.policy.maxActivePendingRequestsPerStudent) {
-      res.status(429).json({
-        error: `Fair Access Policy: You already have ${studentPendingCount} pending requests (limit: ${dbState.policy.maxActivePendingRequestsPerStudent}). Please wait for manager review or cancel an existing request.`,
-      });
-      return;
-    }
+      const startHour = parseHour(startTime);
+      const endHour = startHour + dur;
+      if (endHour > 22 || startHour < 8) {
+        res.status(400).json({
+          error: 'Requested time window falls outside standard campus operating hours (08:00–22:00).',
+        });
+        return;
+      }
+      const endTime = formatHour(endHour);
 
-    // Fair access check 2: Weekly hours quota on this resource
-    const studentResourceHours = dbState.bookings
-      .filter(
+      // Fair access check 1: Max active pending requests per student
+      const studentPendingCount = currentState.bookings.filter(
+        (b) => b.studentId === user.id && b.status === 'Pending'
+      ).length;
+      if (studentPendingCount >= currentState.policy.maxActivePendingRequestsPerStudent) {
+        res.status(429).json({
+          error: `Fair Access Policy: You already have ${studentPendingCount} pending requests (limit: ${currentState.policy.maxActivePendingRequestsPerStudent}). Please wait for manager review or cancel an existing request.`,
+        });
+        return;
+      }
+
+      // Fair access check 2: Weekly hours quota on this resource
+      const studentResourceHours = currentState.bookings
+        .filter(
+          (b) =>
+            b.studentId === user.id &&
+            b.resourceId === resource.id &&
+            (b.status === 'Approved' || b.status === 'CheckedIn' || b.status === 'Completed')
+        )
+        .reduce((acc, b) => acc + b.durationHours, 0);
+
+      if (studentResourceHours + dur > resource.weeklyLimitHoursPerStudent) {
+        res.status(429).json({
+          error: `Fair Access Quota Exceeded: You have used/booked ${studentResourceHours}h on ${resource.code}. Requesting ${dur}h exceeds the ${resource.weeklyLimitHoursPerStudent}h weekly per-student cap.`,
+        });
+        return;
+      }
+
+      // Conflict check against already Approved / CheckedIn bookings
+      const conflictingApproved = currentState.bookings.find(
         (b) =>
-          b.studentId === user.id &&
           b.resourceId === resource.id &&
-          (b.status === 'Approved' || b.status === 'CheckedIn' || b.status === 'Completed')
-      )
-      .reduce((acc, b) => acc + b.durationHours, 0);
+          b.date === date &&
+          (b.status === 'Approved' || b.status === 'CheckedIn') &&
+          intervalsOverlap(startTime, endTime, b.startTime, b.endTime)
+      );
 
-    if (studentResourceHours + dur > resource.weeklyLimitHoursPerStudent) {
-      res.status(429).json({
-        error: `Fair Access Quota Exceeded: You have used/booked ${studentResourceHours}h on ${resource.code}. Requesting ${dur}h exceeds the ${resource.weeklyLimitHoursPerStudent}h weekly per-student cap.`,
+      if (conflictingApproved) {
+        res.status(409).json({
+          error: `Time slot conflict detected: ${resource.code} already has an approved booking (${conflictingApproved.id}, ${conflictingApproved.startTime}–${conflictingApproved.endTime}) on ${date}. Please select another time slot.`,
+        });
+        return;
+      }
+
+      const newBooking: BookingRequest = {
+        id: `BKG-2026-${Math.floor(804 + currentState.bookings.length + Math.random() * 50)}`,
+        resourceId: resource.id,
+        resourceName: resource.name,
+        resourceCode: resource.code,
+        resourceLocation: resource.location,
+        studentId: user.id,
+        studentName: user.name,
+        studentDepartment: user.department,
+        date,
+        startTime,
+        durationHours: dur,
+        endTime,
+        purpose: purpose.trim(),
+        courseOrProjectCode: (courseOrProjectCode || 'Independent Academic Project').trim(),
+        supervisorName: (supervisorName || 'Department Faculty Advisor').trim(),
+        agreedToSafetyRules: true,
+        selfDeclaredEligible: true,
+        status: 'Pending',
+        createdAt: new Date().toISOString(),
+        organizationId: userOrgId,
+      };
+
+      // Persist to Supabase PostgreSQL with verified IST timestamps converted to absolute UTC
+      if (isSupabaseConfigured && supabaseAdmin) {
+        const startTimestamp = toCampusTimestamp(newBooking.date, newBooking.startTime);
+        const endTimestamp = toCampusTimestamp(newBooking.date, newBooking.endTime);
+
+        const insertPayload: any = {
+          id: newBooking.id,
+          resource_id: newBooking.resourceId,
+          resource_name: newBooking.resourceName,
+          resource_code: newBooking.resourceCode,
+          resource_location: newBooking.resourceLocation,
+          student_id: newBooking.studentId,
+          student_name: newBooking.studentName,
+          student_department: newBooking.studentDepartment,
+          date: newBooking.date,
+          start_time_text: newBooking.startTime,
+          end_time_text: newBooking.endTime,
+          start_timestamp: startTimestamp,
+          end_timestamp: endTimestamp,
+          duration_hours: newBooking.durationHours,
+          purpose: newBooking.purpose,
+          course_or_project_code: newBooking.courseOrProjectCode,
+          supervisor_name: newBooking.supervisorName,
+          agreed_to_safety_rules: newBooking.agreedToSafetyRules,
+          self_declared_eligible: newBooking.selfDeclaredEligible,
+          status: newBooking.status,
+        };
+        if (hasOrganizationSupport) {
+          insertPayload.organization_id = userOrgId;
+        }
+
+        const { error: insertError } = await supabaseAdmin!.from('bookings').insert(insertPayload);
+        if (insertError) {
+          console.error('[Supabase Booking Insert Error]:', insertError.message);
+          if (
+            insertError.message.includes('prevent_conflicting_approved_bookings') ||
+            insertError.code === '23P01'
+          ) {
+            res.status(409).json({
+              error: 'Conflict constraint violation: A conflicting booking already exists for this slot.',
+            });
+            return;
+          }
+          res.status(500).json({ error: `Failed to persist booking in database: ${insertError.message}` });
+          return;
+        }
+      } else {
+        dbState.bookings.unshift(newBooking);
+        saveDatabase(dbState);
+      }
+
+      await appendAudit(
+        user,
+        'BOOKING_SUBMITTED',
+        'Booking',
+        newBooking.id,
+        `Submitted booking request ${newBooking.id} for ${resource.code} on ${date} (${startTime}–${endTime} IST).`
+      );
+
+      const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+
+      res.status(201).json({
+        booking: newBooking,
+        state: sanitizeStateForViewer(updatedState, user),
       });
-      return;
+    } catch (err: any) {
+      console.error('[POST /api/bookings error]:', err.message);
+      res.status(500).json({ error: `Internal error creating booking: ${err.message}` });
     }
-
-    // Conflict check against already Approved / CheckedIn bookings
-    const conflictingApproved = dbState.bookings.find(
-      (b) =>
-        b.resourceId === resource.id &&
-        b.date === date &&
-        (b.status === 'Approved' || b.status === 'CheckedIn') &&
-        intervalsOverlap(startTime, endTime, b.startTime, b.endTime)
-    );
-
-    if (conflictingApproved) {
-      res.status(409).json({
-        error: `Time slot conflict detected: ${resource.code} already has an approved booking (${conflictingApproved.id}, ${conflictingApproved.startTime}–${conflictingApproved.endTime}) on ${date}. Please select another time slot.`,
-      });
-      return;
-    }
-
-    const newBooking: BookingRequest = {
-      id: `BKG-2026-${Math.floor(804 + dbState.bookings.length)}`,
-      resourceId: resource.id,
-      resourceName: resource.name,
-      resourceCode: resource.code,
-      resourceLocation: resource.location,
-      studentId: user.id,
-      studentName: user.name,
-      studentDepartment: user.department,
-      date,
-      startTime,
-      durationHours: dur,
-      endTime,
-      purpose: purpose.trim(),
-      courseOrProjectCode: (courseOrProjectCode || 'Independent Academic Project').trim(),
-      supervisorName: (supervisorName || 'Department Faculty Advisor').trim(),
-      agreedToSafetyRules: true,
-      selfDeclaredEligible: true,
-      status: 'Pending',
-      createdAt: new Date().toISOString(),
-      organizationId: userOrgId,
-    };
-
-    dbState.bookings.unshift(newBooking);
-
-    // If Supabase is connected, persist booking with absolute UTC timestamps computed from IST
-    if (supabaseAdmin) {
-      const startTimestamp = toCampusTimestamp(newBooking.date, newBooking.startTime);
-      const endTimestamp = toCampusTimestamp(newBooking.date, newBooking.endTime);
-      supabaseAdmin.from('bookings').insert({
-        id: newBooking.id,
-        resource_id: newBooking.resourceId,
-        resource_name: newBooking.resourceName,
-        resource_code: newBooking.resourceCode,
-        resource_location: newBooking.resourceLocation,
-        student_id: newBooking.studentId,
-        student_name: newBooking.studentName,
-        student_department: newBooking.studentDepartment,
-        date: newBooking.date,
-        start_time_text: newBooking.startTime,
-        end_time_text: newBooking.endTime,
-        start_timestamp: startTimestamp,
-        end_timestamp: endTimestamp,
-        duration_hours: newBooking.durationHours,
-        purpose: newBooking.purpose,
-        course_or_project_code: newBooking.courseOrProjectCode,
-        supervisor_name: newBooking.supervisorName,
-        agreed_to_safety_rules: newBooking.agreedToSafetyRules,
-        self_declared_eligible: newBooking.selfDeclaredEligible,
-        status: newBooking.status,
-        organization_id: userOrgId,
-      }).then(({ error }) => {
-        if (error) console.warn('[Supabase Booking Sync notice]:', error.message);
-      });
-    }
-
-    appendAudit(
-      user,
-      'BOOKING_SUBMITTED',
-      'Booking',
-      newBooking.id,
-      `Submitted booking request ${newBooking.id} for ${resource.code} on ${date} (${startTime}–${endTime} IST).`
-    );
-    saveDatabase(dbState);
-
-    res.status(201).json({
-      booking: newBooking,
-      state: sanitizeStateForViewer(dbState, user),
-    });
   });
 
   // --- MANAGER DECISION (APPROVE / REJECT / WAITLIST) ---
   app.post(
     '/api/bookings/:id/decision',
     requireRole(['manager', 'admin']),
-    (req: AuthenticatedRequest, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const actor = req.user!;
-      const booking = dbState.bookings.find((b) => b.id === req.params.id);
+      let booking: BookingRequest | undefined;
+      const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+
+      booking = currentState.bookings.find((b) => b.id === req.params.id);
       if (!booking) {
         res.status(404).json({ error: 'Booking request not found.' });
         return;
@@ -671,7 +969,7 @@ async function startServer() {
 
       // Conflict safeguard on the server
       if (decision === 'Approved') {
-        const resource = dbState.resources.find((r) => r.id === booking.resourceId);
+        const resource = currentState.resources.find((r) => r.id === booking!.resourceId);
         if (resource && (resource.status === 'Maintenance' || resource.status === 'Restricted')) {
           res.status(409).json({
             error: `Cannot approve: Resource ${resource.code} is currently in ${resource.status} status.`,
@@ -679,13 +977,13 @@ async function startServer() {
           return;
         }
 
-        const conflictingApproved = dbState.bookings.find(
+        const conflictingApproved = currentState.bookings.find(
           (b) =>
-            b.id !== booking.id &&
-            b.resourceId === booking.resourceId &&
-            b.date === booking.date &&
+            b.id !== booking!.id &&
+            b.resourceId === booking!.resourceId &&
+            b.date === booking!.date &&
             (b.status === 'Approved' || b.status === 'CheckedIn') &&
-            intervalsOverlap(booking.startTime, booking.endTime, b.startTime, b.endTime)
+            intervalsOverlap(booking!.startTime, booking!.endTime, b.startTime, b.endTime)
         );
 
         if (conflictingApproved) {
@@ -696,16 +994,46 @@ async function startServer() {
         }
       }
 
-      booking.status = decision;
-      booking.managerDecisionNote =
+      const managerDecisionNote =
         note?.trim() ||
         (decision === 'Approved'
           ? 'Approved after eligibility and schedule verification.'
           : decision === 'Waitlisted'
           ? 'Placed on waitlist pending slot availability.'
           : 'Request declined by resource custodian.');
-      booking.decidedByName = actor.name;
-      booking.decidedAt = new Date().toISOString();
+      const decidedAt = new Date().toISOString();
+
+      if (isSupabaseConfigured) {
+        const { error: updateErr } = await supabaseAdmin!
+          .from('bookings')
+          .update({
+            status: decision,
+            manager_decision_note: managerDecisionNote,
+            decided_by_name: actor.name,
+            decided_at: decidedAt,
+          })
+          .eq('id', booking.id);
+
+        if (updateErr) {
+          if (
+            updateErr.message.includes('prevent_conflicting_approved_bookings') ||
+            updateErr.code === '23P01'
+          ) {
+            res.status(409).json({
+              error: 'Conflict constraint violation: A conflicting booking already exists for this slot.',
+            });
+            return;
+          }
+          res.status(500).json({ error: `Failed to update booking decision in database: ${updateErr.message}` });
+          return;
+        }
+      } else {
+        booking.status = decision;
+        booking.managerDecisionNote = managerDecisionNote;
+        booking.decidedByName = actor.name;
+        booking.decidedAt = decidedAt;
+        saveDatabase(dbState);
+      }
 
       const actionMap = {
         Approved: 'BOOKING_APPROVED',
@@ -713,26 +1041,29 @@ async function startServer() {
         Waitlisted: 'BOOKING_WAITLISTED',
       } as const;
 
-      appendAudit(
+      await appendAudit(
         actor,
         actionMap[decision],
         'Booking',
         booking.id,
-        `${decision} booking ${booking.id} (${booking.studentName}) for ${booking.resourceCode} on ${booking.date} (${booking.startTime}–${booking.endTime}). Note: ${booking.managerDecisionNote}`
+        `${decision} booking ${booking.id} (${booking.studentName}) for ${booking.resourceCode} on ${booking.date} (${booking.startTime}–${booking.endTime}). Note: ${managerDecisionNote}`
       );
-      saveDatabase(dbState);
+
+      const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+      const updatedBooking = updatedState.bookings.find((b) => b.id === booking!.id) || booking;
 
       res.json({
-        booking,
-        state: sanitizeStateForViewer(dbState, actor),
+        booking: updatedBooking,
+        state: sanitizeStateForViewer(updatedState, actor),
       });
     }
   );
 
   // --- CANCEL BOOKING ---
-  app.post('/api/bookings/:id/cancel', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/bookings/:id/cancel', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     const actor = req.user!;
-    const booking = dbState.bookings.find((b) => b.id === req.params.id);
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const booking = currentState.bookings.find((b) => b.id === req.params.id);
     if (!booking) {
       res.status(404).json({ error: 'Booking not found.' });
       return;
@@ -752,26 +1083,43 @@ async function startServer() {
       return;
     }
 
-    booking.status = 'Cancelled';
-    appendAudit(
+    if (isSupabaseConfigured) {
+      const { error: cancelErr } = await supabaseAdmin!
+        .from('bookings')
+        .update({ status: 'Cancelled' })
+        .eq('id', booking.id);
+
+      if (cancelErr) {
+        res.status(500).json({ error: `Failed to cancel booking in database: ${cancelErr.message}` });
+        return;
+      }
+    } else {
+      booking.status = 'Cancelled';
+      saveDatabase(dbState);
+    }
+
+    await appendAudit(
       actor,
       'BOOKING_CANCELLED',
       'Booking',
       booking.id,
       `Cancelled booking ${booking.id} for ${booking.resourceCode} (${booking.date} ${booking.startTime}–${booking.endTime}).`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const updatedBooking = updatedState.bookings.find((b) => b.id === booking.id) || booking;
 
     res.json({
-      booking,
-      state: sanitizeStateForViewer(dbState, actor),
+      booking: updatedBooking,
+      state: sanitizeStateForViewer(updatedState, actor),
     });
   });
 
   // --- CHECK-IN & BEFORE-USE CONDITION REPORT ---
-  app.post('/api/bookings/:id/checkin', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/bookings/:id/checkin', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     const actor = req.user!;
-    const booking = dbState.bookings.find((b) => b.id === req.params.id);
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const booking = currentState.bookings.find((b) => b.id === req.params.id);
     if (!booking) {
       res.status(404).json({ error: 'Booking not found.' });
       return;
@@ -817,35 +1165,65 @@ async function startServer() {
       timestamp: new Date().toISOString(),
     };
 
-    booking.status = 'CheckedIn';
-    booking.checkInAt = report.timestamp;
-    booking.beforeConditionReport = report;
+    if (isSupabaseConfigured) {
+      const { error: bErr } = await supabaseAdmin!
+        .from('bookings')
+        .update({
+          status: 'CheckedIn',
+          check_in_at: report.timestamp,
+          before_condition_report: report,
+        })
+        .eq('id', booking.id);
 
-    const resource = dbState.resources.find((r) => r.id === booking.resourceId);
-    if (resource && resource.status === 'Available') {
-      resource.status = 'In Use';
-      resource.conditionSummary = `${rating} — Checked in by ${actor.name}: ${notes.trim()}`;
+      if (bErr) {
+        res.status(500).json({ error: `Failed to record check-in in database: ${bErr.message}` });
+        return;
+      }
+
+      const resource = currentState.resources.find((r) => r.id === booking!.resourceId);
+      if (resource && resource.status === 'Available') {
+        await supabaseAdmin!
+          .from('resources')
+          .update({
+            status: 'In Use',
+            condition_summary: `${rating} — Checked in by ${actor.name}: ${notes.trim()}`,
+          })
+          .eq('id', booking.resourceId);
+      }
+    } else {
+      booking.status = 'CheckedIn';
+      booking.checkInAt = report.timestamp;
+      booking.beforeConditionReport = report;
+      const resource = dbState.resources.find((r) => r.id === booking!.resourceId);
+      if (resource && resource.status === 'Available') {
+        resource.status = 'In Use';
+        resource.conditionSummary = `${rating} — Checked in by ${actor.name}: ${notes.trim()}`;
+      }
+      saveDatabase(dbState);
     }
 
-    appendAudit(
+    await appendAudit(
       actor,
       'CHECK_IN_COMPLETED',
       'Booking',
       booking.id,
       `Checked in to ${booking.resourceCode} (${booking.id}). Before-use condition: ${rating}.`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const updatedBooking = updatedState.bookings.find((b) => b.id === booking.id) || booking;
 
     res.json({
-      booking,
-      state: sanitizeStateForViewer(dbState, actor),
+      booking: updatedBooking,
+      state: sanitizeStateForViewer(updatedState, actor),
     });
   });
 
   // --- CHECK-OUT & AFTER-USE CONDITION REPORT ---
-  app.post('/api/bookings/:id/checkout', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/bookings/:id/checkout', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     const actor = req.user!;
-    const booking = dbState.bookings.find((b) => b.id === req.params.id);
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const booking = currentState.bookings.find((b) => b.id === req.params.id);
     if (!booking) {
       res.status(404).json({ error: 'Booking not found.' });
       return;
@@ -891,34 +1269,65 @@ async function startServer() {
       timestamp: new Date().toISOString(),
     };
 
-    booking.status = 'Completed';
-    booking.checkOutAt = report.timestamp;
-    booking.afterConditionReport = report;
-    booking.flaggedMissingReport = !booking.beforeConditionReport;
+    const flaggedMissing = !booking.beforeConditionReport;
 
-    const resource = dbState.resources.find((r) => r.id === booking.resourceId);
-    if (resource) {
-      resource.status = rating === 'Damaged — Unsafe / Faulty' ? 'Maintenance' : 'Available';
-      resource.conditionSummary = `${rating} — Last returned ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${notes.trim()}`;
+    if (isSupabaseConfigured) {
+      const { error: bErr } = await supabaseAdmin!
+        .from('bookings')
+        .update({
+          status: 'Completed',
+          check_out_at: report.timestamp,
+          after_condition_report: report,
+          flagged_missing_report: flaggedMissing,
+        })
+        .eq('id', booking.id);
+
+      if (bErr) {
+        res.status(500).json({ error: `Failed to record check-out in database: ${bErr.message}` });
+        return;
+      }
+
+      const newResStatus = rating === 'Damaged — Unsafe / Faulty' ? 'Maintenance' : 'Available';
+      const conditionSummary = `${rating} — Last returned ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${notes.trim()}`;
+      await supabaseAdmin!
+        .from('resources')
+        .update({
+          status: newResStatus,
+          condition_summary: conditionSummary,
+        })
+        .eq('id', booking.resourceId);
+    } else {
+      booking.status = 'Completed';
+      booking.checkOutAt = report.timestamp;
+      booking.afterConditionReport = report;
+      booking.flaggedMissingReport = flaggedMissing;
+      const resource = dbState.resources.find((r) => r.id === booking!.resourceId);
+      if (resource) {
+        resource.status = rating === 'Damaged — Unsafe / Faulty' ? 'Maintenance' : 'Available';
+        resource.conditionSummary = `${rating} — Last returned ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}: ${notes.trim()}`;
+      }
+      saveDatabase(dbState);
     }
 
-    appendAudit(
+    await appendAudit(
       actor,
       'CHECK_OUT_COMPLETED',
       'Booking',
       booking.id,
       `Completed check-out for ${booking.resourceCode} (${booking.id}). After-use condition: ${rating}.`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const updatedBooking = updatedState.bookings.find((b) => b.id === booking.id) || booking;
 
     res.json({
-      booking,
-      state: sanitizeStateForViewer(dbState, actor),
+      booking: updatedBooking,
+      state: sanitizeStateForViewer(updatedState, actor),
     });
   });
 
   // --- INCIDENT REPORTING & REVIEW ---
-  app.post('/api/incidents', requireAuth, (req: AuthenticatedRequest, res: Response) => {
+  app.post('/api/incidents', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
     const actor = req.user!;
     const { resourceId, bookingId, category, severity, description, supportingImageRef } = req.body as Partial<IncidentReport>;
 
@@ -927,15 +1336,19 @@ async function startServer() {
       return;
     }
 
-    const resource = dbState.resources.find((r) => r.id === resourceId);
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const resource = currentState.resources.find((r) => r.id === resourceId);
     if (!resource) {
       res.status(404).json({ error: 'Related resource not found.' });
       return;
     }
 
     const now = new Date().toISOString();
+    const incidentId = `INC-2026-${Math.floor(103 + currentState.incidents.length)}`;
+    const hasOrgSupport = await checkOrganizationSupport();
+
     const incident: IncidentReport = {
-      id: `INC-2026-${Math.floor(103 + dbState.incidents.length)}`,
+      id: incidentId,
       resourceId: resource.id,
       resourceName: resource.name,
       resourceCode: resource.code,
@@ -949,36 +1362,70 @@ async function startServer() {
       supportingImageRef: supportingImageRef?.trim() || undefined,
       status: 'Reported',
       humanReviewRequired: true,
+      organizationId: actor.organizationId || 'org-greenwood-1',
       createdAt: now,
       updatedAt: now,
     };
 
-    if (severity === 'Critical' || severity === 'High') {
-      resource.status = 'Maintenance';
+    if (isSupabaseConfigured) {
+      const incPayload: any = {
+        id: incident.id,
+        resource_id: incident.resourceId,
+        resource_name: incident.resourceName,
+        resource_code: incident.resourceCode,
+        booking_id: incident.bookingId || null,
+        reported_by_user_id: incident.reportedByUserId,
+        reported_by_name: incident.reportedByName,
+        reported_by_role: incident.reportedByRole,
+        category: incident.category,
+        severity: incident.severity,
+        description: incident.description,
+        supporting_image_ref: incident.supportingImageRef || null,
+        status: incident.status,
+        human_review_required: incident.humanReviewRequired,
+      };
+      if (hasOrgSupport) {
+        incPayload.organization_id = actor.organizationId || 'org-greenwood-1';
+      }
+      const { error: incErr } = await supabaseAdmin!.from('incidents').insert(incPayload);
+      if (incErr) {
+        res.status(500).json({ error: `Failed to persist incident in database: ${incErr.message}` });
+        return;
+      }
+      if (severity === 'Critical' || severity === 'High') {
+        await supabaseAdmin!.from('resources').update({ status: 'Maintenance' }).eq('id', resource.id);
+      }
+    } else {
+      if (severity === 'Critical' || severity === 'High') {
+        resource.status = 'Maintenance';
+      }
+      dbState.incidents.unshift(incident);
+      saveDatabase(dbState);
     }
 
-    dbState.incidents.unshift(incident);
-    appendAudit(
+    await appendAudit(
       actor,
       'INCIDENT_REPORTED',
       'Incident',
       incident.id,
       `Reported ${severity.toLowerCase()}-severity incident (${category}) on ${resource.code}. Human custodian review required.`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
 
     res.status(201).json({
       incident,
-      state: sanitizeStateForViewer(dbState, actor),
+      state: sanitizeStateForViewer(updatedState, actor),
     });
   });
 
   app.patch(
     '/api/incidents/:id',
     requireRole(['manager', 'admin']),
-    (req: AuthenticatedRequest, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const actor = req.user!;
-      const incident = dbState.incidents.find((i) => i.id === req.params.id);
+      const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+      const incident = currentState.incidents.find((i) => i.id === req.params.id);
       if (!incident) {
         res.status(404).json({ error: 'Incident record not found.' });
         return;
@@ -990,30 +1437,51 @@ async function startServer() {
         updateResourceStatus?: Resource['status'];
       };
 
-      if (status) incident.status = status;
-      if (managerReviewNotes !== undefined) incident.managerReviewNotes = managerReviewNotes.trim();
-      incident.reviewedByName = actor.name;
-      incident.updatedAt = new Date().toISOString();
+      const newStatus = status || incident.status;
+      const notes = managerReviewNotes !== undefined ? managerReviewNotes.trim() : incident.managerReviewNotes;
+      const updatedAt = new Date().toISOString();
 
-      if (updateResourceStatus) {
-        const resource = dbState.resources.find((r) => r.id === incident.resourceId);
-        if (resource) {
-          resource.status = updateResourceStatus;
+      if (isSupabaseConfigured) {
+        const updateData: any = {
+          status: newStatus,
+          manager_review_notes: notes || null,
+          reviewed_by_name: actor.name,
+          updated_at: updatedAt,
+        };
+        const { error: incErr } = await supabaseAdmin!.from('incidents').update(updateData).eq('id', incident.id);
+        if (incErr) {
+          res.status(500).json({ error: `Failed to update incident in database: ${incErr.message}` });
+          return;
         }
+        if (updateResourceStatus) {
+          await supabaseAdmin!.from('resources').update({ status: updateResourceStatus }).eq('id', incident.resourceId);
+        }
+      } else {
+        incident.status = newStatus;
+        if (notes !== undefined) incident.managerReviewNotes = notes;
+        incident.reviewedByName = actor.name;
+        incident.updatedAt = updatedAt;
+        if (updateResourceStatus) {
+          const resource = dbState.resources.find((r) => r.id === incident!.resourceId);
+          if (resource) resource.status = updateResourceStatus;
+        }
+        saveDatabase(dbState);
       }
 
-      appendAudit(
+      await appendAudit(
         actor,
         'INCIDENT_STATUS_UPDATED',
         'Incident',
         incident.id,
-        `Updated incident ${incident.id} on ${incident.resourceCode} to '${incident.status}'. Review note: ${incident.managerReviewNotes || 'Recorded'}.`
+        `Updated incident ${incident.id} on ${incident.resourceCode} to '${newStatus}'. Review note: ${notes || 'Recorded'}.`
       );
-      saveDatabase(dbState);
+
+      const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+      const updatedIncident = updatedState.incidents.find((i) => i.id === incident!.id) || incident;
 
       res.json({
-        incident,
-        state: sanitizeStateForViewer(dbState, actor),
+        incident: updatedIncident,
+        state: sanitizeStateForViewer(updatedState, actor),
       });
     }
   );
@@ -1022,7 +1490,7 @@ async function startServer() {
   app.post(
     '/api/resources',
     requireRole(['manager', 'admin']),
-    (req: AuthenticatedRequest, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const actor = req.user!;
       const body = req.body as Partial<Resource>;
       if (!body.name?.trim() || !body.code?.trim() || !body.category || !body.location?.trim()) {
@@ -1030,6 +1498,7 @@ async function startServer() {
         return;
       }
 
+      const hasOrgSupport = await checkOrganizationSupport();
       const newResource: Resource = {
         id: `res-${Date.now().toString().slice(-6)}`,
         code: body.code.trim().toUpperCase(),
@@ -1052,7 +1521,7 @@ async function startServer() {
         cooldownHours: Number(body.cooldownHours) || 6,
         eligibilityRequirements: body.eligibilityRequirements?.length
           ? body.eligibilityRequirements
-          : ['Enrolled senior student in good standing', 'Completed basic laboratory safety orientation'],
+          : ['Enrolled student or faculty in good standing', 'Completed basic laboratory safety orientation'],
         requiredSafetyModule: body.requiredSafetyModule || 'Lab Safety & Basic Electrical Orientation',
         safetyRules: body.safetyRules?.length
           ? body.safetyRules
@@ -1062,26 +1531,67 @@ async function startServer() {
             ],
         managerId: actor.id,
         managerName: actor.name,
-        isDemoListing: true,
+        isDemoListing: false,
+        organizationId: actor.organizationId || 'org-greenwood-1',
         specifications: body.specifications || {
           'Added By': actor.name,
           'Educational Status': 'Active',
         },
       };
 
-      dbState.resources.unshift(newResource);
-      appendAudit(
+      if (isSupabaseConfigured) {
+        const resPayload: any = {
+          id: newResource.id,
+          code: newResource.code,
+          name: newResource.name,
+          category: newResource.category,
+          resource_type: newResource.resourceType,
+          location: newResource.location,
+          building: newResource.building,
+          description: newResource.description,
+          image_url: newResource.imageUrl,
+          status: newResource.status,
+          condition_summary: newResource.conditionSummary,
+          operating_hours: newResource.operatingHours,
+          available_time_slots: newResource.availableTimeSlots,
+          min_duration_hours: newResource.minDurationHours,
+          max_duration_hours: newResource.maxDurationHours,
+          weekly_limit_hours_per_student: newResource.weeklyLimitHoursPerStudent,
+          cooldown_hours: newResource.cooldownHours,
+          eligibility_requirements: newResource.eligibilityRequirements,
+          required_safety_module: newResource.requiredSafetyModule,
+          safety_rules: newResource.safetyRules,
+          manager_id: actor.id,
+          manager_name: actor.name,
+          is_demo_listing: false,
+          specifications: newResource.specifications,
+        };
+        if (hasOrgSupport) {
+          resPayload.organization_id = actor.organizationId || 'org-greenwood-1';
+        }
+        const { error: resErr } = await supabaseAdmin!.from('resources').insert(resPayload);
+        if (resErr) {
+          res.status(500).json({ error: `Failed to persist resource in database: ${resErr.message}` });
+          return;
+        }
+      } else {
+        dbState.resources.unshift(newResource);
+        saveDatabase(dbState);
+      }
+
+      await appendAudit(
         actor,
         'RESOURCE_CREATED',
         'Resource',
         newResource.id,
         `Added new resource listing ${newResource.code} (${newResource.name}) in ${newResource.location}.`
       );
-      saveDatabase(dbState);
+
+      const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
 
       res.status(201).json({
         resource: newResource,
-        state: sanitizeStateForViewer(dbState, actor),
+        state: sanitizeStateForViewer(updatedState, actor),
       });
     }
   );
@@ -1089,50 +1599,74 @@ async function startServer() {
   app.patch(
     '/api/resources/:id',
     requireRole(['manager', 'admin']),
-    (req: AuthenticatedRequest, res: Response) => {
+    async (req: AuthenticatedRequest, res: Response) => {
       const actor = req.user!;
-      const resource = dbState.resources.find((r) => r.id === req.params.id);
+      const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+      const resource = currentState.resources.find((r) => r.id === req.params.id);
       if (!resource) {
         res.status(404).json({ error: 'Resource not found.' });
         return;
       }
 
       const updates = req.body as Partial<Resource>;
-      if (updates.name !== undefined) resource.name = updates.name.trim();
-      if (updates.status !== undefined) resource.status = updates.status;
-      if (updates.conditionSummary !== undefined) resource.conditionSummary = updates.conditionSummary.trim();
-      if (updates.operatingHours !== undefined) resource.operatingHours = updates.operatingHours.trim();
-      if (updates.maxDurationHours !== undefined) resource.maxDurationHours = Number(updates.maxDurationHours);
-      if (updates.weeklyLimitHoursPerStudent !== undefined) {
-        resource.weeklyLimitHoursPerStudent = Number(updates.weeklyLimitHoursPerStudent);
-      }
-      if (updates.location !== undefined) resource.location = updates.location.trim();
+      if (isSupabaseConfigured) {
+        const updateData: any = {};
+        if (updates.name !== undefined) updateData.name = updates.name.trim();
+        if (updates.status !== undefined) updateData.status = updates.status;
+        if (updates.conditionSummary !== undefined) updateData.condition_summary = updates.conditionSummary.trim();
+        if (updates.operatingHours !== undefined) updateData.operating_hours = updates.operatingHours.trim();
+        if (updates.maxDurationHours !== undefined) updateData.max_duration_hours = Number(updates.maxDurationHours);
+        if (updates.weeklyLimitHoursPerStudent !== undefined) {
+          updateData.weekly_limit_hours_per_student = Number(updates.weeklyLimitHoursPerStudent);
+        }
+        if (updates.location !== undefined) updateData.location = updates.location.trim();
 
-      appendAudit(
+        const { error: resErr } = await supabaseAdmin!.from('resources').update(updateData).eq('id', resource.id);
+        if (resErr) {
+          res.status(500).json({ error: `Failed to update resource in database: ${resErr.message}` });
+          return;
+        }
+      } else {
+        if (updates.name !== undefined) resource.name = updates.name.trim();
+        if (updates.status !== undefined) resource.status = updates.status;
+        if (updates.conditionSummary !== undefined) resource.conditionSummary = updates.conditionSummary.trim();
+        if (updates.operatingHours !== undefined) resource.operatingHours = updates.operatingHours.trim();
+        if (updates.maxDurationHours !== undefined) resource.maxDurationHours = Number(updates.maxDurationHours);
+        if (updates.weeklyLimitHoursPerStudent !== undefined) {
+          resource.weeklyLimitHoursPerStudent = Number(updates.weeklyLimitHoursPerStudent);
+        }
+        if (updates.location !== undefined) resource.location = updates.location.trim();
+        saveDatabase(dbState);
+      }
+
+      await appendAudit(
         actor,
         'RESOURCE_UPDATED',
         'Resource',
         resource.id,
-        `Updated resource ${resource.code}: status='${resource.status}', maxDuration=${resource.maxDurationHours}h, weeklyCap=${resource.weeklyLimitHoursPerStudent}h.`
+        `Updated resource ${resource.code}: status='${updates.status || resource.status}'.`
       );
-      saveDatabase(dbState);
+
+      const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+      const updatedResource = updatedState.resources.find((r) => r.id === resource!.id) || resource;
 
       res.json({
-        resource,
-        state: sanitizeStateForViewer(dbState, actor),
+        resource: updatedResource,
+        state: sanitizeStateForViewer(updatedState, actor),
       });
     }
   );
 
   // --- ADMIN ENDPOINTS (ORGANISATION MEMBERS, USER ROLES & PLATFORM POLICY) ---
-  app.patch('/api/users/:id/role', requireRole(['admin']), (req: AuthenticatedRequest, res: Response) => {
+  app.patch('/api/users/:id/role', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
     const actor = req.user!;
     if (actor.role !== 'admin') {
       res.status(403).json({ error: 'Access denied: Only administrators can modify roles or restrictions.' });
       return;
     }
 
-    const targetUser = dbState.users.find((u) => u.id === req.params.id);
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const targetUser = currentState.users.find((u) => u.id === req.params.id);
     if (!targetUser) {
       res.status(404).json({ error: 'User not found in organisation directory.' });
       return;
@@ -1149,38 +1683,42 @@ async function startServer() {
       activeRestrictions?: string | null;
     };
 
-    if (role && ['student', 'faculty', 'manager', 'admin'].includes(role)) {
-      targetUser.role = role;
-    }
-    if (activeRestrictions !== undefined) {
-      targetUser.activeRestrictions = activeRestrictions;
-    }
+    const newRole = role && ['student', 'faculty', 'manager', 'admin'].includes(role) ? role : targetUser.role;
+    const newRestrictions = activeRestrictions !== undefined ? activeRestrictions : targetUser.activeRestrictions;
 
-    if (supabaseAdmin) {
-      supabaseAdmin
+    if (isSupabaseConfigured) {
+      const { error: uErr } = await supabaseAdmin!
         .from('users')
         .update({
-          role: targetUser.role,
-          active_restrictions: targetUser.activeRestrictions,
+          role: newRole,
+          active_restrictions: newRestrictions,
         })
-        .eq('id', targetUser.id)
-        .then(({ error }) => {
-          if (error) console.warn('[Supabase Role Sync notice]:', error.message);
-        });
+        .eq('id', targetUser.id);
+
+      if (uErr) {
+        res.status(500).json({ error: `Failed to update user role in database: ${uErr.message}` });
+        return;
+      }
+    } else {
+      targetUser.role = newRole;
+      targetUser.activeRestrictions = newRestrictions;
+      saveDatabase(dbState);
     }
 
-    appendAudit(
+    await appendAudit(
       actor,
       'ROLE_UPDATED',
       'User',
       targetUser.id,
-      `Administrator updated ${targetUser.name}: role='${targetUser.role}', restrictions='${targetUser.activeRestrictions || 'None'}'.`
+      `Administrator updated ${targetUser.name}: role='${newRole}', restrictions='${newRestrictions || 'None'}'.`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const updatedUser = updatedState.users.find((u) => u.id === targetUser!.id) || targetUser;
 
     res.json({
-      user: targetUser,
-      state: sanitizeStateForViewer(dbState, actor),
+      user: updatedUser,
+      state: sanitizeStateForViewer(updatedState, actor),
     });
   });
 
@@ -1208,7 +1746,8 @@ async function startServer() {
     const cleanEmail = email.trim().toLowerCase();
     const orgId = actor.organizationId || 'org-greenwood-1';
 
-    const existingUser = dbState.users.find(
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const existingUser = currentState.users.find(
       (u) => (u.organizationId || 'org-greenwood-1') === orgId && u.email.toLowerCase() === cleanEmail
     );
     if (existingUser) {
@@ -1241,6 +1780,8 @@ async function startServer() {
     }
 
     const newUserId = `usr-${role.slice(0, 3)}-${Date.now().toString().slice(-4)}`;
+    const hasOrgSupport = await checkOrganizationSupport();
+
     const newMember: User = {
       id: newUserId,
       name: name.trim(),
@@ -1263,10 +1804,8 @@ async function startServer() {
       emailVerified: false,
     };
 
-    dbState.users.push(newMember);
-
-    if (supabaseAdmin) {
-      await supabaseAdmin.from('users').insert({
+    if (isSupabaseConfigured) {
+      const userPayload: any = {
         id: newMember.id,
         auth_user_id: invitedAuthId || null,
         name: newMember.name,
@@ -1274,42 +1813,67 @@ async function startServer() {
         department: newMember.department,
         academic_standing: newMember.academicStanding,
         role: newMember.role,
-        organization_id: orgId,
-        status: 'invited',
-        email_verified: false,
-      }).then(({ error }) => {
-        if (error) console.warn('[Supabase users insert warning]:', error.message);
-      });
+        active_restrictions: null,
+        completed_safety_modules: [],
+      };
+      if (hasOrgSupport) {
+        userPayload.organization_id = orgId;
+        userPayload.status = 'invited';
+        userPayload.email_verified = false;
+      }
+
+      const { error: userErr } = await supabaseAdmin!.from('users').insert(userPayload);
+      if (userErr) {
+        res.status(500).json({ error: `Failed to insert user profile in database: ${userErr.message}` });
+        return;
+      }
+
+      if (hasOrgSupport) {
+        await supabaseAdmin!.from('organization_invitations').insert({
+          id: `inv-${Date.now().toString().slice(-6)}`,
+          organization_id: orgId,
+          email: cleanEmail,
+          role,
+          name: name.trim(),
+          department: department.trim(),
+          invited_by_user_id: actor.id,
+          expires_at: new Date(Date.now() + 7 * 86400 * 1000).toISOString(),
+          status: 'pending',
+        });
+      }
+    } else {
+      dbState.users.push(newMember);
+      const newInvitation: OrganizationInvitation = {
+        id: `inv-${Date.now().toString().slice(-6)}`,
+        organizationId: orgId,
+        email: cleanEmail,
+        role,
+        name: name.trim(),
+        department: department.trim(),
+        invitedByUserId: actor.id,
+        expiresAt: new Date(Date.now() + 7 * 86400 * 1000).toISOString(),
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+      if (!dbState.invitations) dbState.invitations = [];
+      dbState.invitations.unshift(newInvitation);
+      saveDatabase(dbState);
     }
 
-    const newInvitation: OrganizationInvitation = {
-      id: `inv-${Date.now().toString().slice(-6)}`,
-      organizationId: orgId,
-      email: cleanEmail,
-      role,
-      name: name.trim(),
-      department: department.trim(),
-      invitedByUserId: actor.id,
-      expiresAt: new Date(Date.now() + 7 * 86400 * 1000).toISOString(),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-    if (!dbState.invitations) dbState.invitations = [];
-    dbState.invitations.unshift(newInvitation);
-
-    appendAudit(
+    await appendAudit(
       actor,
       'MEMBER_INVITED',
       'User',
       newMember.id,
       `Administrator invited ${newMember.name} (${newMember.email}) as ${role.toUpperCase()} to organisation.`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
 
     res.status(201).json({
       success: true,
       member: newMember,
-      state: sanitizeStateForViewer(dbState, actor),
+      state: sanitizeStateForViewer(updatedState, actor),
       message: `Invitation successfully sent to ${cleanEmail}. The member will receive a secure expiring setup link.`,
     });
   });
@@ -1330,7 +1894,8 @@ async function startServer() {
       return;
     }
 
-    const targetUser = dbState.users.find((u) => u.id === targetId);
+    const currentState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const targetUser = currentState.users.find((u) => u.id === targetId);
     if (!targetUser) {
       res.status(404).json({ error: 'Member not found in organisation directory.' });
       return;
@@ -1341,59 +1906,97 @@ async function startServer() {
       return;
     }
 
-    targetUser.status = status;
-
-    if (supabaseAdmin) {
-      await supabaseAdmin.from('users').update({ status }).eq('id', targetId).then(({ error }) => {
-        if (error) console.warn('[Supabase member status update notice]:', error.message);
-      });
+    if (isSupabaseConfigured) {
+      const hasOrgSupport = await checkOrganizationSupport();
+      if (hasOrgSupport) {
+        const { error: updateErr } = await supabaseAdmin!.from('users').update({ status }).eq('id', targetId);
+        if (updateErr) {
+          res.status(500).json({ error: `Failed to update member status in database: ${updateErr.message}` });
+          return;
+        }
+      }
+    } else {
+      targetUser.status = status;
+      saveDatabase(dbState);
     }
 
-    appendAudit(
+    await appendAudit(
       actor,
       'MEMBER_STATUS_UPDATED',
       'User',
       targetUser.id,
       `Administrator updated member status of ${targetUser.name} to ${status.toUpperCase()}.`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
+    const updatedUser = updatedState.users.find((u) => u.id === targetId) || targetUser;
 
     res.json({
-      user: targetUser,
-      state: sanitizeStateForViewer(dbState, actor),
+      user: updatedUser,
+      state: sanitizeStateForViewer(updatedState, actor),
       message: `Member ${targetUser.name} is now ${status}.`,
     });
   });
 
-  app.patch('/api/policy', requireRole(['admin']), (req: AuthenticatedRequest, res: Response) => {
+  app.patch('/api/policy', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
     const actor = req.user!;
     const updates = req.body as Partial<PlatformPolicySettings>;
 
-    if (updates.maxActivePendingRequestsPerStudent !== undefined) {
-      dbState.policy.maxActivePendingRequestsPerStudent = Number(updates.maxActivePendingRequestsPerStudent);
-    }
-    if (updates.defaultWeeklyHoursCapPerStudent !== undefined) {
-      dbState.policy.defaultWeeklyHoursCapPerStudent = Number(updates.defaultWeeklyHoursCapPerStudent);
-    }
-    if (updates.defaultCooldownHoursBetweenBookings !== undefined) {
-      dbState.policy.defaultCooldownHoursBetweenBookings = Number(updates.defaultCooldownHoursBetweenBookings);
-    }
-    if (updates.requireBeforeAndAfterConditionReports !== undefined) {
-      dbState.policy.requireBeforeAndAfterConditionReports = Boolean(updates.requireBeforeAndAfterConditionReports);
+    if (isSupabaseConfigured) {
+      const policyUpdates: any = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.maxActivePendingRequestsPerStudent !== undefined) {
+        policyUpdates.max_active_pending_requests_per_student = Number(updates.maxActivePendingRequestsPerStudent);
+      }
+      if (updates.defaultWeeklyHoursCapPerStudent !== undefined) {
+        policyUpdates.default_weekly_hours_cap_per_student = Number(updates.defaultWeeklyHoursCapPerStudent);
+      }
+      if (updates.defaultCooldownHoursBetweenBookings !== undefined) {
+        policyUpdates.default_cooldown_hours_between_bookings = Number(updates.defaultCooldownHoursBetweenBookings);
+      }
+      if (updates.requireBeforeAndAfterConditionReports !== undefined) {
+        policyUpdates.require_before_and_after_condition_reports = Boolean(updates.requireBeforeAndAfterConditionReports);
+      }
+
+      const { error: polErr } = await supabaseAdmin!
+        .from('platform_policy')
+        .update(policyUpdates)
+        .eq('id', 1);
+
+      if (polErr) {
+        res.status(500).json({ error: `Failed to update platform policy in database: ${polErr.message}` });
+        return;
+      }
+    } else {
+      if (updates.maxActivePendingRequestsPerStudent !== undefined) {
+        dbState.policy.maxActivePendingRequestsPerStudent = Number(updates.maxActivePendingRequestsPerStudent);
+      }
+      if (updates.defaultWeeklyHoursCapPerStudent !== undefined) {
+        dbState.policy.defaultWeeklyHoursCapPerStudent = Number(updates.defaultWeeklyHoursCapPerStudent);
+      }
+      if (updates.defaultCooldownHoursBetweenBookings !== undefined) {
+        dbState.policy.defaultCooldownHoursBetweenBookings = Number(updates.defaultCooldownHoursBetweenBookings);
+      }
+      if (updates.requireBeforeAndAfterConditionReports !== undefined) {
+        dbState.policy.requireBeforeAndAfterConditionReports = Boolean(updates.requireBeforeAndAfterConditionReports);
+      }
+      saveDatabase(dbState);
     }
 
-    appendAudit(
+    await appendAudit(
       actor,
       'POLICY_UPDATED',
       'Policy',
       'GLOBAL-POLICY',
-      `Updated fair-access policy: maxPending=${dbState.policy.maxActivePendingRequestsPerStudent}, weeklyCap=${dbState.policy.defaultWeeklyHoursCapPerStudent}h, cooldown=${dbState.policy.defaultCooldownHoursBetweenBookings}h.`
+      `Updated fair-access policy settings.`
     );
-    saveDatabase(dbState);
+
+    const updatedState = isSupabaseConfigured ? await loadStateFromSupabase() : dbState;
 
     res.json({
-      policy: dbState.policy,
-      state: sanitizeStateForViewer(dbState, actor),
+      policy: updatedState.policy,
+      state: sanitizeStateForViewer(updatedState, actor),
     });
   });
 

@@ -122,6 +122,25 @@ async function seed(): Promise<void> {
   const existingAuthUsers = await fetchAllAuthUsers(supabase);
   console.log(`  • Found ${existingAuthUsers.length} existing Supabase Auth account(s).`);
 
+  // Check organization schema support
+  let hasOrgSupport = false;
+  try {
+    const { data: orgCheck, error: orgErr } = await supabase.from('organizations').select('id').eq('id', 'org-greenwood-1').maybeSingle();
+    if (!orgErr) {
+      hasOrgSupport = true;
+      if (!orgCheck) {
+        await supabase.from('organizations').insert({
+          id: 'org-greenwood-1',
+          name: 'Greenwood College & Senior School',
+          domain: 'greenwood.edu',
+        });
+        console.log('  ✓ Initialized default organisation (Greenwood College).');
+      }
+    }
+  } catch {
+    hasOrgSupport = false;
+  }
+
   for (const user of INITIAL_DATABASE_STATE.users) {
     // Check existing database profile in public.users
     const { data: existingProfile, error: profileCheckError } = await supabase
@@ -172,6 +191,7 @@ async function seed(): Promise<void> {
           name: user.name,
           role: user.role,
           department: user.department,
+          organization_id: 'org-greenwood-1',
         },
       });
 
@@ -188,18 +208,26 @@ async function seed(): Promise<void> {
     }
 
     // Upsert public.users profile ensuring non-null, verified auth_user_id
+    const userProfilePayload: any = {
+      id: user.id,
+      auth_user_id: targetAuthId,
+      name: user.name,
+      email: user.email,
+      department: user.department,
+      academic_standing: user.academicStanding,
+      role: user.role,
+      completed_safety_modules: user.completedSafetyModules,
+      active_restrictions: user.activeRestrictions,
+    };
+
+    if (hasOrgSupport) {
+      userProfilePayload.organization_id = 'org-greenwood-1';
+      userProfilePayload.status = 'active';
+      userProfilePayload.email_verified = true;
+    }
+
     const { error: profileUpsertError } = await supabase.from('users').upsert(
-      {
-        id: user.id,
-        auth_user_id: targetAuthId,
-        name: user.name,
-        email: user.email,
-        department: user.department,
-        academic_standing: user.academicStanding,
-        role: user.role,
-        completed_safety_modules: user.completedSafetyModules,
-        active_restrictions: user.activeRestrictions,
-      },
+      userProfilePayload,
       { onConflict: 'id' }
     );
 
@@ -212,33 +240,38 @@ async function seed(): Promise<void> {
   // 3. Seed Educational Resources (Idempotent)
   console.log('\n[3/5] Seeding educational resources directory...');
   for (const res of INITIAL_DATABASE_STATE.resources) {
+    const resPayload: any = {
+      id: res.id,
+      code: res.code,
+      name: res.name,
+      category: res.category,
+      resource_type: res.resourceType,
+      location: res.location,
+      building: res.building,
+      description: res.description,
+      imageUrl: res.imageUrl,
+      status: res.status,
+      condition_summary: res.conditionSummary,
+      operating_hours: res.operatingHours,
+      available_time_slots: res.availableTimeSlots,
+      min_duration_hours: res.minDurationHours,
+      max_duration_hours: res.maxDurationHours,
+      weekly_limit_hours_per_student: res.weeklyLimitHoursPerStudent,
+      cooldown_hours: res.cooldownHours,
+      eligibility_requirements: res.eligibilityRequirements,
+      required_safety_module: res.requiredSafetyModule,
+      safety_rules: res.safetyRules,
+      manager_id: res.managerId,
+      manager_name: res.managerName,
+      is_demo_listing: res.isDemoListing,
+      specifications: res.specifications,
+    };
+    if (hasOrgSupport) {
+      resPayload.organization_id = 'org-greenwood-1';
+    }
+
     const { error: resError } = await supabase.from('resources').upsert(
-      {
-        id: res.id,
-        code: res.code,
-        name: res.name,
-        category: res.category,
-        resource_type: res.resourceType,
-        location: res.location,
-        building: res.building,
-        description: res.description,
-        image_url: res.imageUrl,
-        status: res.status,
-        condition_summary: res.conditionSummary,
-        operating_hours: res.operatingHours,
-        available_time_slots: res.availableTimeSlots,
-        min_duration_hours: res.minDurationHours,
-        max_duration_hours: res.maxDurationHours,
-        weekly_limit_hours_per_student: res.weeklyLimitHoursPerStudent,
-        cooldown_hours: res.cooldownHours,
-        eligibility_requirements: res.eligibilityRequirements,
-        required_safety_module: res.requiredSafetyModule,
-        safety_rules: res.safetyRules,
-        manager_id: res.managerId,
-        manager_name: res.managerName,
-        is_demo_listing: res.isDemoListing,
-        specifications: res.specifications,
-      },
+      resPayload,
       { onConflict: 'id', ignoreDuplicates: true }
     );
 
@@ -254,37 +287,42 @@ async function seed(): Promise<void> {
     const startTimestamp = toCampusTimestamp(bkg.date, bkg.startTime);
     const endTimestamp = toCampusTimestamp(bkg.date, bkg.endTime);
 
+    const bkgPayload: any = {
+      id: bkg.id,
+      resource_id: bkg.resourceId,
+      resource_name: bkg.resourceName,
+      resource_code: bkg.resourceCode,
+      resource_location: bkg.resourceLocation,
+      student_id: bkg.studentId,
+      student_name: bkg.studentName,
+      student_department: bkg.studentDepartment,
+      date: bkg.date,
+      start_time_text: bkg.startTime,
+      end_time_text: bkg.endTime,
+      start_timestamp: startTimestamp,
+      end_timestamp: endTimestamp,
+      duration_hours: bkg.durationHours,
+      purpose: bkg.purpose,
+      course_or_project_code: bkg.courseOrProjectCode,
+      supervisor_name: bkg.supervisorName,
+      agreed_to_safety_rules: bkg.agreedToSafetyRules,
+      self_declared_eligible: bkg.selfDeclaredEligible,
+      status: bkg.status,
+      manager_decision_note: bkg.managerDecisionNote,
+      decided_by_name: bkg.decidedByName,
+      decided_at: bkg.decidedAt,
+      check_in_at: bkg.checkInAt,
+      check_out_at: bkg.checkOutAt,
+      before_condition_report: bkg.beforeConditionReport,
+      after_condition_report: bkg.afterConditionReport,
+      flagged_missing_report: bkg.flaggedMissingReport,
+    };
+    if (hasOrgSupport) {
+      bkgPayload.organization_id = 'org-greenwood-1';
+    }
+
     const { error: bkgError } = await supabase.from('bookings').upsert(
-      {
-        id: bkg.id,
-        resource_id: bkg.resourceId,
-        resource_name: bkg.resourceName,
-        resource_code: bkg.resourceCode,
-        resource_location: bkg.resourceLocation,
-        student_id: bkg.studentId,
-        student_name: bkg.studentName,
-        student_department: bkg.studentDepartment,
-        date: bkg.date,
-        start_time_text: bkg.startTime,
-        end_time_text: bkg.endTime,
-        start_timestamp: startTimestamp,
-        end_timestamp: endTimestamp,
-        duration_hours: bkg.durationHours,
-        purpose: bkg.purpose,
-        course_or_project_code: bkg.courseOrProjectCode,
-        supervisor_name: bkg.supervisorName,
-        agreed_to_safety_rules: bkg.agreedToSafetyRules,
-        self_declared_eligible: bkg.selfDeclaredEligible,
-        status: bkg.status,
-        manager_decision_note: bkg.managerDecisionNote,
-        decided_by_name: bkg.decidedByName,
-        decided_at: bkg.decidedAt,
-        check_in_at: bkg.checkInAt,
-        check_out_at: bkg.checkOutAt,
-        before_condition_report: bkg.beforeConditionReport,
-        after_condition_report: bkg.afterConditionReport,
-        flagged_missing_report: bkg.flaggedMissingReport,
-      },
+      bkgPayload,
       { onConflict: 'id', ignoreDuplicates: true }
     );
 
@@ -297,19 +335,24 @@ async function seed(): Promise<void> {
   // 5. Seed Audit Events (Idempotent)
   console.log('\n[5/5] Seeding initial audit ledger entries...');
   for (const ev of INITIAL_DATABASE_STATE.auditEvents) {
+    const auditPayload: any = {
+      id: ev.id,
+      timestamp: ev.timestamp,
+      actor_id: ev.actorId,
+      actor_name: ev.actorName,
+      actor_role: ev.actorRole,
+      action_type: ev.actionType,
+      target_type: ev.targetType,
+      target_id: ev.targetId,
+      summary: ev.summary,
+      metadata: ev.metadata,
+    };
+    if (hasOrgSupport) {
+      auditPayload.organization_id = 'org-greenwood-1';
+    }
+
     const { error: auditError } = await supabase.from('audit_events').upsert(
-      {
-        id: ev.id,
-        timestamp: ev.timestamp,
-        actor_id: ev.actorId,
-        actor_name: ev.actorName,
-        actor_role: ev.actorRole,
-        action_type: ev.actionType,
-        target_type: ev.targetType,
-        target_id: ev.targetId,
-        summary: ev.summary,
-        metadata: ev.metadata,
-      },
+      auditPayload,
       { onConflict: 'id', ignoreDuplicates: true }
     );
 

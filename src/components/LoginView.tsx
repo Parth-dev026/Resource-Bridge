@@ -44,11 +44,11 @@ const DEMO_PRESETS: DemoPreset[] = [
     tagColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   },
   {
-    name: 'Prof. Rajesh Nair',
-    email: 'r.nair@school-demo.edu',
-    role: 'Faculty',
-    department: 'Electronics & Robotics Faculty',
-    tagColor: 'bg-blue-100 text-blue-800 border-blue-300',
+    name: 'Diya Krishnan',
+    email: 'diya.krishnan@school-demo.edu',
+    role: 'Student',
+    department: 'Physics & STEM Senior Scholar',
+    tagColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   },
   {
     name: 'Mrs. Priya Sharma',
@@ -60,7 +60,7 @@ const DEMO_PRESETS: DemoPreset[] = [
   {
     name: 'Dr. Ananya Deshmukh',
     email: 'ananya.deshmukh@school-demo.edu',
-    role: 'Organisation Admin',
+    role: 'Campus Administrator',
     department: 'Principal & Facilities Leadership',
     tagColor: 'bg-indigo-100 text-indigo-800 border-indigo-300',
   },
@@ -188,6 +188,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   const handleSelectPreset = (presetEmail: string) => {
     setEmail(presetEmail);
+    setPassword('Greenwood2026!');
     setErrorMessage(null);
     setSuccessMessage(null);
   };
@@ -580,8 +581,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
             <div className="mt-3 text-[11px] text-slate-500 leading-normal bg-slate-50 p-2.5 rounded border border-slate-200 space-y-1">
               <div>
+                <strong>Test Accounts:</strong> Click any preset above to prefill email &amp; test password (<code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800 font-mono">Greenwood2026!</code>).
+              </div>
+              <div>
                 <strong>Security Policy:</strong> Public registration is disabled. Accounts and roles
-                must be provisioned by an organisation administrator.
+                are managed by campus administrators.
               </div>
             </div>
           </div>
