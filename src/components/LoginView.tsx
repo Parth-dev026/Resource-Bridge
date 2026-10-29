@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   BookOpen,
   CheckCircle2,
   Eye,
   EyeOff,
+  GraduationCap,
   HelpCircle,
   KeyRound,
   Lock,
   LogIn,
+  Mail,
   School,
   Shield,
   UserCheck,
@@ -41,27 +44,29 @@ const DEMO_PRESETS: DemoPreset[] = [
     tagColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
   },
   {
-    name: 'Diya Krishnan',
-    email: 'diya.krishnan@school-demo.edu',
-    role: 'Student',
-    department: 'Senior Science & Electronics',
-    tagColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    name: 'Prof. Rajesh Nair',
+    email: 'r.nair@school-demo.edu',
+    role: 'Faculty',
+    department: 'Electronics & Robotics Faculty',
+    tagColor: 'bg-blue-100 text-blue-800 border-blue-300',
   },
   {
     name: 'Mrs. Priya Sharma',
     email: 'p.sharma@school-demo.edu',
-    role: 'Manager / Teacher',
+    role: 'Resource Manager',
     department: 'Science & Computer Labs Coordinator',
     tagColor: 'bg-teal-100 text-teal-800 border-teal-300',
   },
   {
     name: 'Dr. Ananya Deshmukh',
     email: 'ananya.deshmukh@school-demo.edu',
-    role: 'Principal & Admin',
-    department: 'Campus Facilities & Academic Leadership',
+    role: 'Organisation Admin',
+    department: 'Principal & Facilities Leadership',
     tagColor: 'bg-indigo-100 text-indigo-800 border-indigo-300',
   },
 ];
+
+type AuthMode = 'signin' | 'forgot' | 'reset-password';
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onLoginSuccess,
@@ -69,17 +74,35 @@ export const LoginView: React.FC<LoginViewProps> = ({
   onViewAbout,
   initialEmail = '',
 }) => {
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState<string>(initialEmail);
   const [password, setPassword] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Check if user reached page through Supabase Auth recovery or invite link
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      if (
+        hash.includes('type=recovery') ||
+        hash.includes('type=invite') ||
+        hash.includes('access_token')
+      ) {
+        setMode('reset-password');
+      }
+    }
+  }, []);
+
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      setErrorMessage('Please enter your campus email address.');
+      setErrorMessage('Please enter your registered organisation email address.');
       return;
     }
     if (!password) {
@@ -89,6 +112,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
     setLoading(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
 
     try {
       const res = await api.signInWithSupabaseAuth(cleanEmail, password);
@@ -104,9 +128,68 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      setErrorMessage('Please enter your registered organisation email address.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await api.sendPasswordResetEmail(cleanEmail);
+      setSuccessMessage(res.message);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Unable to send password reset email. Please try again.';
+      setErrorMessage(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 8) {
+      setErrorMessage('Password must be at least 8 characters long.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMessage('Passwords do not match. Please re-enter both passwords.');
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await api.updatePassword(newPassword);
+      setSuccessMessage('Password updated successfully! Redirecting to your workspace...');
+      window.setTimeout(() => {
+        onLoginSuccess(res.user, res.state);
+      }, 1000);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to update password. Your reset link may have expired.';
+      setErrorMessage(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSelectPreset = (presetEmail: string) => {
     setEmail(presetEmail);
     setErrorMessage(null);
+    setSuccessMessage(null);
   };
 
   return (
@@ -120,7 +203,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
           <div>
             <h1 className="text-base font-bold text-slate-900 tracking-tight">ResourceBridge</h1>
             <p className="text-xs text-slate-500 font-medium">
-              Greenwood College &amp; Senior School Campus Portal
+              Greenwood College &amp; Senior School · Authorised Campus Portal
             </p>
           </div>
         </div>
@@ -151,15 +234,46 @@ export const LoginView: React.FC<LoginViewProps> = ({
       {/* Main Authentication Card */}
       <main className="max-w-md w-full mx-auto my-auto pt-6 pb-8">
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 space-y-6">
+          {/* Organisation Header */}
           <div className="space-y-1 text-center">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-teal-50 text-teal-700 mb-2 border border-teal-100">
-              <Lock className="w-6 h-6" />
+              {mode === 'forgot' ? (
+                <Mail className="w-6 h-6" />
+              ) : mode === 'reset-password' ? (
+                <KeyRound className="w-6 h-6" />
+              ) : (
+                <Lock className="w-6 h-6" />
+              )}
             </div>
-            <h2 className="text-xl font-bold text-slate-900">Sign In to Campus Workspace</h2>
+            <h2 className="text-xl font-bold text-slate-900">
+              {mode === 'forgot'
+                ? 'Reset Account Password'
+                : mode === 'reset-password'
+                ? 'Set New Password'
+                : 'Sign In to Campus Workspace'}
+            </h2>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Enter your registered Supabase Auth credentials to access equipment, labs, and bookings.
+              {mode === 'forgot'
+                ? 'Enter your registered organisation email to receive a secure recovery link.'
+                : mode === 'reset-password'
+                ? 'Establish a secure password for your organisation membership.'
+                : 'Enter your organisation-authorised Supabase credentials to access campus facilities.'}
             </p>
           </div>
+
+          {/* Success Notice */}
+          {successMessage && (
+            <div
+              role="status"
+              className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start gap-2.5 text-xs text-emerald-800"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-semibold block">Notification</span>
+                <span>{successMessage}</span>
+              </div>
+            </div>
+          )}
 
           {/* Error Notice */}
           {errorMessage && (
@@ -168,101 +282,273 @@ export const LoginView: React.FC<LoginViewProps> = ({
               className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-800"
             >
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <span className="font-semibold block">Authentication Error</span>
+              <div className="space-y-0.5">
+                <span className="font-semibold block">Authentication Notice</span>
                 <span>{errorMessage}</span>
               </div>
             </div>
           )}
 
-          {/* Sign In Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="login-email" className="block text-xs font-semibold text-slate-800 mb-1">
-                Campus Email Address
-              </label>
-              <input
-                id="login-email"
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. aarav.mehta@school-demo.edu"
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
-                disabled={loading}
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
+          {/* MODE 1: SIGN IN FORM */}
+          {mode === 'signin' && (
+            <form onSubmit={handleSignIn} className="space-y-4">
+              <div>
                 <label
-                  htmlFor="login-password"
-                  className="block text-xs font-semibold text-slate-800"
+                  htmlFor="login-email"
+                  className="block text-xs font-semibold text-slate-800 mb-1"
                 >
-                  Password
+                  Organisation Email Address
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5" />
-                      <span>Hide</span>
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Show</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              <div className="relative">
                 <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
+                  id="login-email"
+                  type="email"
                   required
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your account password"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. aarav.mehta@school-demo.edu"
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
                   disabled={loading}
                 />
               </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2.5 px-4 bg-teal-800 hover:bg-teal-900 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Verifying credentials...</span>
-                </>
-              ) : (
-                <>
-                  <LogIn className="w-4 h-4" />
-                  <span>Sign In</span>
-                </>
-              )}
-            </button>
-          </form>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label
+                    htmlFor="login-password"
+                    className="block text-xs font-semibold text-slate-800"
+                  >
+                    Password
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? (
+                        <>
+                          <EyeOff className="w-3.5 h-3.5" />
+                          <span>Hide</span>
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Show</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('forgot');
+                        setErrorMessage(null);
+                        setSuccessMessage(null);
+                      }}
+                      className="text-xs text-teal-700 hover:text-teal-900 font-semibold"
+                    >
+                      Forgot Password?
+                    </button>
+                  </div>
+                </div>
+                <div className="relative">
+                  <input
+                    id="login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your account password"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
+                    disabled={loading}
+                  />
+                </div>
+              </div>
 
-          {/* Quick-Fill Presets for Seeded Accounts */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 px-4 bg-teal-800 hover:bg-teal-900 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Verifying credentials...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" />
+                    <span>Sign In to Organisation</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
+
+          {/* MODE 2: FORGOT PASSWORD FORM */}
+          {mode === 'forgot' && (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="forgot-email"
+                  className="block text-xs font-semibold text-slate-800 mb-1"
+                >
+                  Registered Organisation Email
+                </label>
+                <input
+                  id="forgot-email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g. aarav.mehta@school-demo.edu"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
+                  disabled={loading}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 px-4 bg-teal-800 hover:bg-teal-900 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Sending password recovery email...</span>
+                  </>
+                ) : (
+                  <>
+                    <Mail className="w-4 h-4" />
+                    <span>Send Password Reset Link</span>
+                  </>
+                )}
+              </button>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Return to Sign In</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* MODE 3: SET NEW PASSWORD FORM (RECOVERY / INVITATION) */}
+          {mode === 'reset-password' && (
+            <form onSubmit={handleUpdatePassword} className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label
+                    htmlFor="reset-password"
+                    className="block text-xs font-semibold text-slate-800"
+                  >
+                    New Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>Hide</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Show</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <input
+                  id="reset-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter at least 8 characters"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
+                  disabled={loading}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="confirm-password"
+                  className="block text-xs font-semibold text-slate-800 mb-1"
+                >
+                  Confirm New Password
+                </label>
+                <input
+                  id="confirm-password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Re-enter your new password"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
+                  disabled={loading}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 px-4 bg-teal-800 hover:bg-teal-900 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Updating password...</span>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4" />
+                    <span>Update Password &amp; Sign In</span>
+                  </>
+                )}
+              </button>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Return to Sign In</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Authorised Organisation Demo Account Selector (Fills email only) */}
           <div className="pt-4 border-t border-slate-200">
             <div className="flex items-center justify-between mb-2.5">
               <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-                <span>Seeded Campus Accounts</span>
+                <Shield className="w-3.5 h-3.5 text-teal-700" />
+                <span>Authorised Organisation Accounts</span>
               </span>
-              <span className="text-[11px] text-slate-500">Click to fill email</span>
+              <span className="text-[11px] text-slate-500">Quick-fill email</span>
             </div>
 
             <div className="grid grid-cols-1 gap-2">
@@ -279,7 +565,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 >
                   <div className="min-w-0 pr-2">
                     <div className="font-semibold text-slate-900 truncate">{preset.name}</div>
-                    <div className="font-mono text-[11px] text-slate-500 truncate">{preset.email}</div>
+                    <div className="font-mono text-[11px] text-slate-500 truncate">
+                      {preset.email}
+                    </div>
                   </div>
                   <span
                     className={`text-[10px] font-semibold px-2 py-0.5 rounded border shrink-0 ${preset.tagColor}`}
@@ -290,11 +578,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
               ))}
             </div>
 
-            <p className="mt-3 text-[11px] text-slate-500 leading-normal bg-slate-50 p-2.5 rounded border border-slate-200">
-              <strong>Campus Security Note:</strong> All authentication tokens are cryptographically
-              validated through Supabase Auth. Enter the password configured during database seeding to
-              log in.
-            </p>
+            <div className="mt-3 text-[11px] text-slate-500 leading-normal bg-slate-50 p-2.5 rounded border border-slate-200 space-y-1">
+              <div>
+                <strong>Security Policy:</strong> Public registration is disabled. Accounts and roles
+                must be provisioned by an organisation administrator.
+              </div>
+            </div>
           </div>
         </div>
       </main>
@@ -303,7 +592,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
       <footer className="max-w-4xl w-full mx-auto text-center pt-4 border-t border-slate-200 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Shield className="w-3.5 h-3.5 text-teal-700" />
-          <span>Protected by Row Level Security (RLS) &amp; Express token verification</span>
+          <span>Organisation Multi-Tenancy &amp; Role-Based Access Control</span>
         </div>
         <div className="font-mono text-[11px] text-slate-500">
           Campus Timezone: Asia/Kolkata (IST)

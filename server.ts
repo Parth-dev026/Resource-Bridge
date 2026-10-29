@@ -13,6 +13,7 @@ import {
   BookingRequest,
   ConditionReport,
   IncidentReport,
+  OrganizationInvitation,
   PlatformPolicySettings,
   Resource,
   User,
@@ -141,6 +142,7 @@ function appendAudit(
     targetType,
     targetId,
     summary,
+    organizationId: actor.organizationId || 'org-greenwood-1',
   };
   dbState.auditEvents.unshift(event);
 
@@ -156,6 +158,7 @@ function appendAudit(
       target_type: event.targetType,
       target_id: event.targetId,
       summary: event.summary,
+      organization_id: event.organizationId,
     }).then(({ error }) => {
       if (error) console.warn('[Supabase Audit Event notice]:', error.message);
     });
@@ -202,6 +205,10 @@ async function authenticateUser(req: AuthenticatedRequest, _res: Response, next:
         }
 
         if (dbUser) {
+          const userOrgId = dbUser.organization_id || (dbUser as any).organizationId || 'org-greenwood-1';
+          const userStatus = dbUser.status || 'active';
+          const emailVerified = Boolean(data.user.email_confirmed_at || dbUser.email_verified || dbUser.emailVerified);
+
           req.user = {
             id: dbUser.id,
             name: dbUser.name,
@@ -213,6 +220,10 @@ async function authenticateUser(req: AuthenticatedRequest, _res: Response, next:
               ? (dbUser.completed_safety_modules || dbUser.completedSafetyModules)
               : [],
             activeRestrictions: dbUser.active_restrictions ?? dbUser.activeRestrictions ?? null,
+            organizationId: userOrgId,
+            organizationName: dbUser.organization_name || (dbUser as any).organizationName || 'Greenwood College & Senior School',
+            status: userStatus,
+            emailVerified,
           };
           return next();
         } else {
@@ -242,10 +253,35 @@ async function authenticateUser(req: AuthenticatedRequest, _res: Response, next:
 function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.user) {
     res.status(401).json({
-      error: 'Authentication required. Please sign in with an authorized campus account.',
+      error: 'Authentication required. Please sign in with an authorised organisation account.',
     });
     return;
   }
+
+  if (req.user.status === 'inactive') {
+    res.status(403).json({
+      error: 'Your organisation membership is currently inactive. Please contact your campus administrator for reactivation.',
+      code: 'ACCOUNT_INACTIVE',
+    });
+    return;
+  }
+
+  if (req.user.status === 'invited') {
+    res.status(403).json({
+      error: 'Your account invitation is pending password setup. Please use the secure setup link sent to your email.',
+      code: 'INVITATION_PENDING',
+    });
+    return;
+  }
+
+  if (req.user.emailVerified === false) {
+    res.status(403).json({
+      error: 'Your email address has not been verified. Please confirm your email address before signing in.',
+      code: 'EMAIL_UNVERIFIED',
+    });
+    return;
+  }
+
   next();
 }
 
@@ -253,6 +289,10 @@ function requireRole(allowedRoles: UserRole[]) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required.' });
+      return;
+    }
+    if (req.user.status === 'inactive') {
+      res.status(403).json({ error: 'Your organisation membership is currently inactive.' });
       return;
     }
     if (!allowedRoles.includes(req.user.role)) {
@@ -266,15 +306,22 @@ function requireRole(allowedRoles: UserRole[]) {
 }
 
 function sanitizeStateForViewer(state: AppDatabaseState, viewer?: User) {
-  // Privacy rule: "Do not expose private information about other students."
   const isStaff = viewer?.role === 'manager' || viewer?.role === 'admin';
   const isAdmin = viewer?.role === 'admin';
+  const orgId = viewer?.organizationId || 'org-greenwood-1';
 
-  const sanitizedBookings = state.bookings.map((b) => {
+  // Multi-tenancy scoping: filter all records by viewer's organisation
+  const orgResources = state.resources.filter((r) => (r.organizationId || 'org-greenwood-1') === orgId);
+  const orgBookings = state.bookings.filter((b) => (b.organizationId || 'org-greenwood-1') === orgId);
+  const orgIncidents = state.incidents.filter((i) => (i.organizationId || 'org-greenwood-1') === orgId);
+  const orgAudit = state.auditEvents.filter((ev) => (ev.organizationId || 'org-greenwood-1') === orgId);
+  const orgUsers = state.users.filter((u) => (u.organizationId || 'org-greenwood-1') === orgId);
+
+  const sanitizedBookings = orgBookings.map((b) => {
     if (isStaff || (viewer && b.studentId === viewer.id)) {
       return b;
     }
-    // Redact other students' personal names, supervisor, and purpose for public/student conflict visibility
+    // Redact other students' personal names, supervisor, and purpose for student privacy
     return {
       ...b,
       studentName: 'Reserved by Campus Student (Redacted)',
@@ -286,29 +333,38 @@ function sanitizeStateForViewer(state: AppDatabaseState, viewer?: User) {
   });
 
   const sanitizedUsers = isAdmin
-    ? state.users
+    ? orgUsers
     : isStaff
-    ? state.users
-    : state.users.filter((u) => (viewer && u.id === viewer.id) || u.role !== 'student');
+    ? orgUsers
+    : orgUsers.filter((u) => (viewer && u.id === viewer.id) || (u.role !== 'student' && u.role !== 'faculty'));
 
-  const sanitizedAudit = state.auditEvents.map((ev) => {
-    if (isStaff || (viewer && ev.actorId === viewer.id) || ev.actorRole !== 'student') {
+  const sanitizedAudit = orgAudit.map((ev) => {
+    if (isStaff || (viewer && ev.actorId === viewer.id) || (ev.actorRole !== 'student' && ev.actorRole !== 'faculty')) {
       return ev;
     }
     return {
       ...ev,
-      actorName: 'Campus Student (Redacted)',
-      summary: ev.summary.replace(ev.actorName, 'A student'),
+      actorName: 'Campus Member (Redacted)',
+      summary: ev.summary.replace(ev.actorName, 'A campus member'),
     };
   });
 
   return {
     policy: state.policy,
-    resources: state.resources,
+    resources: orgResources,
     bookings: sanitizedBookings,
-    incidents: state.incidents,
+    incidents: orgIncidents,
     auditEvents: sanitizedAudit,
     users: sanitizedUsers,
+    organizations: state.organizations || [
+      {
+        id: 'org-greenwood-1',
+        name: 'Greenwood College & Senior School',
+        slug: 'greenwood-college',
+        description: 'Unified campus sharing facility for STEM, robotics, and computing',
+      },
+    ],
+    invitations: isAdmin ? (state.invitations || []).filter((inv) => inv.organizationId === orgId) : [],
   };
 }
 
@@ -435,6 +491,14 @@ async function startServer() {
       return;
     }
 
+    // Cross-organisation access guard
+    const userOrgId = user.organizationId || 'org-greenwood-1';
+    const resourceOrgId = resource.organizationId || 'org-greenwood-1';
+    if (userOrgId !== resourceOrgId) {
+      res.status(403).json({ error: 'Access denied: Selected resource belongs to a different organisation.' });
+      return;
+    }
+
     if (resource.status === 'Maintenance' || resource.status === 'Restricted') {
       res.status(400).json({
         error: `${resource.name} is currently marked as ${resource.status} and cannot accept new bookings for immediate use.`,
@@ -524,6 +588,7 @@ async function startServer() {
       selfDeclaredEligible: true,
       status: 'Pending',
       createdAt: new Date().toISOString(),
+      organizationId: userOrgId,
     };
 
     dbState.bookings.unshift(newBooking);
@@ -553,6 +618,7 @@ async function startServer() {
         agreed_to_safety_rules: newBooking.agreedToSafetyRules,
         self_declared_eligible: newBooking.selfDeclaredEligible,
         status: newBooking.status,
+        organization_id: userOrgId,
       }).then(({ error }) => {
         if (error) console.warn('[Supabase Booking Sync notice]:', error.message);
       });
@@ -1058,10 +1124,9 @@ async function startServer() {
     }
   );
 
-  // --- ADMIN ENDPOINTS (USER ROLES & PLATFORM POLICY) ---
+  // --- ADMIN ENDPOINTS (ORGANISATION MEMBERS, USER ROLES & PLATFORM POLICY) ---
   app.patch('/api/users/:id/role', requireRole(['admin']), (req: AuthenticatedRequest, res: Response) => {
     const actor = req.user!;
-    // Strict defense: Ensure caller is genuinely admin
     if (actor.role !== 'admin') {
       res.status(403).json({ error: 'Access denied: Only administrators can modify roles or restrictions.' });
       return;
@@ -1069,7 +1134,13 @@ async function startServer() {
 
     const targetUser = dbState.users.find((u) => u.id === req.params.id);
     if (!targetUser) {
-      res.status(404).json({ error: 'User not found.' });
+      res.status(404).json({ error: 'User not found in organisation directory.' });
+      return;
+    }
+
+    // Cross-organisation isolation
+    if ((targetUser.organizationId || 'org-greenwood-1') !== (actor.organizationId || 'org-greenwood-1')) {
+      res.status(403).json({ error: 'Access denied: Member belongs to a different organisation.' });
       return;
     }
 
@@ -1078,11 +1149,24 @@ async function startServer() {
       activeRestrictions?: string | null;
     };
 
-    if (role && ['student', 'manager', 'admin'].includes(role)) {
+    if (role && ['student', 'faculty', 'manager', 'admin'].includes(role)) {
       targetUser.role = role;
     }
     if (activeRestrictions !== undefined) {
       targetUser.activeRestrictions = activeRestrictions;
+    }
+
+    if (supabaseAdmin) {
+      supabaseAdmin
+        .from('users')
+        .update({
+          role: targetUser.role,
+          active_restrictions: targetUser.activeRestrictions,
+        })
+        .eq('id', targetUser.id)
+        .then(({ error }) => {
+          if (error) console.warn('[Supabase Role Sync notice]:', error.message);
+        });
     }
 
     appendAudit(
@@ -1097,6 +1181,187 @@ async function startServer() {
     res.json({
       user: targetUser,
       state: sanitizeStateForViewer(dbState, actor),
+    });
+  });
+
+  // Admin member invitation endpoint (Supabase Auth invite flow)
+  app.post('/api/admin/members/invite', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
+    const actor = req.user!;
+    const { email, name, role, department } = req.body as {
+      email?: string;
+      name?: string;
+      role?: UserRole;
+      department?: string;
+    };
+
+    if (!email?.trim() || !name?.trim() || !role || !department?.trim()) {
+      res.status(400).json({ error: 'Email, full name, role, and department are required to invite a member.' });
+      return;
+    }
+
+    const validRoles: UserRole[] = ['student', 'faculty', 'manager', 'admin'];
+    if (!validRoles.includes(role)) {
+      res.status(400).json({ error: `Invalid role specified. Permitted roles: ${validRoles.join(', ')}.` });
+      return;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const orgId = actor.organizationId || 'org-greenwood-1';
+
+    const existingUser = dbState.users.find(
+      (u) => (u.organizationId || 'org-greenwood-1') === orgId && u.email.toLowerCase() === cleanEmail
+    );
+    if (existingUser) {
+      res.status(400).json({ error: `A member with email '${cleanEmail}' is already registered in this organisation.` });
+      return;
+    }
+
+    let invitedAuthId: string | undefined;
+
+    // Trigger Supabase Auth invitation email if configured
+    if (supabaseAdmin) {
+      const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(cleanEmail, {
+        data: {
+          name: name.trim(),
+          role,
+          department: department.trim(),
+          organizationId: orgId,
+        },
+        redirectTo: process.env.APP_URL || undefined,
+      });
+
+      if (inviteErr) {
+        console.error('[Supabase Invite Error]:', inviteErr.message);
+        res.status(502).json({
+          error: `Supabase Auth invitation error: ${inviteErr.message}. Please ensure SMTP or custom email delivery is configured in your Supabase project settings.`,
+        });
+        return;
+      }
+      invitedAuthId = inviteData?.user?.id;
+    }
+
+    const newUserId = `usr-${role.slice(0, 3)}-${Date.now().toString().slice(-4)}`;
+    const newMember: User = {
+      id: newUserId,
+      name: name.trim(),
+      email: cleanEmail,
+      department: department.trim(),
+      academicStanding:
+        role === 'faculty'
+          ? 'Faculty Member'
+          : role === 'manager'
+          ? 'Resource Manager'
+          : role === 'admin'
+          ? 'Campus Administrator'
+          : 'Student in Good Standing',
+      role,
+      completedSafetyModules: [],
+      activeRestrictions: null,
+      organizationId: orgId,
+      organizationName: actor.organizationName || 'Greenwood College & Senior School',
+      status: 'invited',
+      emailVerified: false,
+    };
+
+    dbState.users.push(newMember);
+
+    if (supabaseAdmin) {
+      await supabaseAdmin.from('users').insert({
+        id: newMember.id,
+        auth_user_id: invitedAuthId || null,
+        name: newMember.name,
+        email: newMember.email,
+        department: newMember.department,
+        academic_standing: newMember.academicStanding,
+        role: newMember.role,
+        organization_id: orgId,
+        status: 'invited',
+        email_verified: false,
+      }).then(({ error }) => {
+        if (error) console.warn('[Supabase users insert warning]:', error.message);
+      });
+    }
+
+    const newInvitation: OrganizationInvitation = {
+      id: `inv-${Date.now().toString().slice(-6)}`,
+      organizationId: orgId,
+      email: cleanEmail,
+      role,
+      name: name.trim(),
+      department: department.trim(),
+      invitedByUserId: actor.id,
+      expiresAt: new Date(Date.now() + 7 * 86400 * 1000).toISOString(),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    if (!dbState.invitations) dbState.invitations = [];
+    dbState.invitations.unshift(newInvitation);
+
+    appendAudit(
+      actor,
+      'MEMBER_INVITED',
+      'User',
+      newMember.id,
+      `Administrator invited ${newMember.name} (${newMember.email}) as ${role.toUpperCase()} to organisation.`
+    );
+    saveDatabase(dbState);
+
+    res.status(201).json({
+      success: true,
+      member: newMember,
+      state: sanitizeStateForViewer(dbState, actor),
+      message: `Invitation successfully sent to ${cleanEmail}. The member will receive a secure expiring setup link.`,
+    });
+  });
+
+  // Admin member status update (Activate / Deactivate)
+  app.patch('/api/admin/members/:id/status', requireRole(['admin']), async (req: AuthenticatedRequest, res: Response) => {
+    const actor = req.user!;
+    const targetId = req.params.id;
+    const { status } = req.body as { status?: 'active' | 'inactive' };
+
+    if (!status || !['active', 'inactive'].includes(status)) {
+      res.status(400).json({ error: "Valid status ('active' or 'inactive') is required." });
+      return;
+    }
+
+    if (actor.id === targetId && status === 'inactive') {
+      res.status(400).json({ error: 'You cannot deactivate your own administrative account.' });
+      return;
+    }
+
+    const targetUser = dbState.users.find((u) => u.id === targetId);
+    if (!targetUser) {
+      res.status(404).json({ error: 'Member not found in organisation directory.' });
+      return;
+    }
+
+    if ((targetUser.organizationId || 'org-greenwood-1') !== (actor.organizationId || 'org-greenwood-1')) {
+      res.status(403).json({ error: 'Access denied: Target member belongs to a different organisation.' });
+      return;
+    }
+
+    targetUser.status = status;
+
+    if (supabaseAdmin) {
+      await supabaseAdmin.from('users').update({ status }).eq('id', targetId).then(({ error }) => {
+        if (error) console.warn('[Supabase member status update notice]:', error.message);
+      });
+    }
+
+    appendAudit(
+      actor,
+      'MEMBER_STATUS_UPDATED',
+      'User',
+      targetUser.id,
+      `Administrator updated member status of ${targetUser.name} to ${status.toUpperCase()}.`
+    );
+    saveDatabase(dbState);
+
+    res.json({
+      user: targetUser,
+      state: sanitizeStateForViewer(dbState, actor),
+      message: `Member ${targetUser.name} is now ${status}.`,
     });
   });
 

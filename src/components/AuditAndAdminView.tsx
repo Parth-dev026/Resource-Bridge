@@ -1,12 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import {
   Activity,
+  CheckCircle2,
   History,
   Lock,
+  Mail,
   Scale,
   Settings,
   ShieldCheck,
+  UserCheck,
+  UserPlus,
   Users,
+  X,
+  XCircle,
 } from 'lucide-react';
 import {
   AuditEvent,
@@ -31,6 +37,16 @@ interface AuditAndAdminViewProps {
     payload: { role?: UserRole; activeRestrictions?: string | null }
   ) => Promise<void>;
   onUpdatePolicy: (payload: Partial<PlatformPolicySettings>) => Promise<void>;
+  onInviteMember?: (payload: {
+    email: string;
+    name: string;
+    role: UserRole;
+    department: string;
+  }) => Promise<{ success: boolean; message: string; user?: any }>;
+  onUpdateMemberStatus?: (
+    userId: string,
+    status: 'active' | 'inactive'
+  ) => Promise<{ success: boolean; message: string; user?: any }>;
 }
 
 export const AuditAndAdminView: React.FC<AuditAndAdminViewProps> = ({
@@ -43,12 +59,22 @@ export const AuditAndAdminView: React.FC<AuditAndAdminViewProps> = ({
   policy,
   onUpdateUserRole,
   onUpdatePolicy,
+  onInviteMember,
+  onUpdateMemberStatus,
 }) => {
   const [selectedSection, setSelectedSection] = useState<'audit' | 'fairness' | 'admin'>(
     currentUser.role === 'admin' ? 'admin' : 'audit'
   );
   const [auditFilter, setAuditFilter] = useState<string>('ALL');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Invite member modal state
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [inviteRole, setInviteRole] = useState<UserRole>('student');
+  const [inviteDepartment, setInviteDepartment] = useState('Computer Science');
+  const [inviteSubmitting, setInviteSubmitting] = useState(false);
 
   // Admin policy edit states
   const [maxPending, setMaxPending] = useState(policy.maxActivePendingRequestsPerStudent);
@@ -137,6 +163,53 @@ export const AuditAndAdminView: React.FC<AuditAndAdminViewProps> = ({
         type: 'error',
         text: err instanceof Error ? err.message : 'Role update failed.',
       });
+    }
+  };
+
+  const handleToggleStatus = async (targetUser: User) => {
+    if (!onUpdateMemberStatus) return;
+    setFeedback(null);
+    const nextStatus = targetUser.status === 'active' ? 'inactive' : 'active';
+    try {
+      const res = await onUpdateMemberStatus(targetUser.id, nextStatus);
+      setFeedback({
+        type: 'success',
+        text: res.message || `Member ${targetUser.name} marked as ${nextStatus}.`,
+      });
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Status update failed.',
+      });
+    }
+  };
+
+  const handleInviteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onInviteMember) return;
+    setInviteSubmitting(true);
+    setFeedback(null);
+    try {
+      const res = await onInviteMember({
+        email: inviteEmail.trim(),
+        name: inviteName.trim(),
+        role: inviteRole,
+        department: inviteDepartment.trim(),
+      });
+      setFeedback({
+        type: 'success',
+        text: res.message || `Invitation successfully sent to ${inviteEmail}.`,
+      });
+      setIsInviteOpen(false);
+      setInviteEmail('');
+      setInviteName('');
+    } catch (err) {
+      setFeedback({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to send invitation.',
+      });
+    } finally {
+      setInviteSubmitting(false);
     }
   };
 
@@ -395,56 +468,124 @@ export const AuditAndAdminView: React.FC<AuditAndAdminViewProps> = ({
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* User Directory (7 cols) */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg overflow-hidden">
-              <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-teal-700" />
-                  Campus Users &amp; Roles
-                </h2>
+            {/* User Directory (8 cols on lg) */}
+            <div className="lg:col-span-8 bg-white border border-slate-200 rounded-lg overflow-hidden">
+              <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-teal-700" />
+                    Organisation Members &amp; Access
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Organisation-authorised accounts only. Public registration is permanently disabled.
+                  </p>
+                </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeedback(null);
+                      setIsInviteOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-700 hover:bg-teal-800 text-white rounded text-xs font-semibold shadow-sm transition-colors"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Invite Member</span>
+                  </button>
+                )}
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
-                      <th className="py-3 px-4">Name &amp; Email</th>
-                      <th className="py-3 px-4">Department / Class</th>
+                      <th className="py-3 px-4">Member</th>
                       <th className="py-3 px-4">Role</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 text-xs">
-                    {users.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-50/80">
-                        <td className="py-3 px-4">
-                          <div className="font-bold text-slate-900">{u.name}</div>
-                          <div className="font-mono text-slate-500">{u.email}</div>
-                        </td>
-                        <td className="py-3 px-4 text-slate-700">
-                          {u.department}
-                        </td>
-                        <td className="py-3 px-4">
-                          <select
-                            disabled={!isAdmin}
-                            value={u.role}
-                            onChange={(e) => handleRoleChange(u, e.target.value as UserRole)}
-                            aria-label={`Role for ${u.name}`}
-                            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-900 disabled:opacity-50"
-                          >
-                            <option value="student">student</option>
-                            <option value="manager">manager</option>
-                            <option value="admin">admin</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
+                    {users.map((u) => {
+                      const isCurrent = u.id === currentUser.id;
+                      const userStatus = u.status || 'active';
+                      return (
+                        <tr key={u.id} className="hover:bg-slate-50/80">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                              <span>{u.name}</span>
+                              {isCurrent && (
+                                <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-normal">
+                                  You
+                                </span>
+                              )}
+                            </div>
+                            <div className="font-mono text-slate-500 text-[11px]">{u.email}</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">{u.department}</div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <select
+                              disabled={!isAdmin || isCurrent}
+                              value={u.role}
+                              onChange={(e) => handleRoleChange(u, e.target.value as UserRole)}
+                              aria-label={`Role for ${u.name}`}
+                              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-900 disabled:opacity-50"
+                            >
+                              <option value="student">Student</option>
+                              <option value="faculty">Faculty</option>
+                              <option value="manager">Lab Manager</option>
+                              <option value="admin">Administrator</option>
+                            </select>
+                          </td>
+                          <td className="py-3 px-4">
+                            {userStatus === 'active' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                Active
+                              </span>
+                            )}
+                            {userStatus === 'invited' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                <Mail className="w-3 h-3 text-amber-600" />
+                                Invited
+                              </span>
+                            )}
+                            {userStatus === 'inactive' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                                <XCircle className="w-3 h-3 text-slate-400" />
+                                Inactive
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            {isAdmin && !isCurrent ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleStatus(u)}
+                                className={`text-[11px] font-medium px-2.5 py-1 rounded border transition-colors ${
+                                  userStatus === 'active'
+                                    ? 'text-rose-700 border-rose-200 hover:bg-rose-50'
+                                    : 'text-emerald-700 border-emerald-200 hover:bg-emerald-50'
+                                }`}
+                              >
+                                {userStatus === 'active' ? 'Deactivate' : 'Activate'}
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 italic">
+                                {isCurrent ? 'Self-managed' : 'Protected'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* Policy Limits (5 cols) */}
-            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg p-5">
+            {/* Policy Limits (4 cols on lg) */}
+            <div className="lg:col-span-4 bg-white border border-slate-200 rounded-lg p-5">
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-teal-700" />
                 Campus Fair Sharing Settings
@@ -502,6 +643,140 @@ export const AuditAndAdminView: React.FC<AuditAndAdminViewProps> = ({
               </form>
             </div>
           </div>
+
+          {/* Invite Member Modal */}
+          {isInviteOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+              <div
+                className="bg-white rounded-xl shadow-xl border border-slate-200 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="invite-modal-title"
+              >
+                <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-800">
+                      <UserPlus className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 id="invite-modal-title" className="text-sm font-bold text-slate-900">
+                        Invite Organisation Member
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Secure account provisioning with password setup link
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsInviteOpen(false)}
+                    className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                    aria-label="Close dialog"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleInviteSubmit} className="p-5 space-y-4">
+                  <div>
+                    <label htmlFor="invite-email" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Email Address *
+                    </label>
+                    <input
+                      id="invite-email"
+                      type="email"
+                      required
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="e.g. professor.sharma@school-demo.edu"
+                      className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="invite-name" className="block text-xs font-semibold text-slate-700 mb-1">
+                      Full Name *
+                    </label>
+                    <input
+                      id="invite-name"
+                      type="text"
+                      required
+                      value={inviteName}
+                      onChange={(e) => setInviteName(e.target.value)}
+                      placeholder="e.g. Dr. Rajesh Sharma"
+                      className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-700"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="invite-role" className="block text-xs font-semibold text-slate-700 mb-1">
+                        Assigned Role *
+                      </label>
+                      <select
+                        id="invite-role"
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value as UserRole)}
+                        className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-700"
+                      >
+                        <option value="student">Student</option>
+                        <option value="faculty">Faculty</option>
+                        <option value="manager">Lab Manager</option>
+                        <option value="admin">Administrator</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="invite-dept" className="block text-xs font-semibold text-slate-700 mb-1">
+                        Department / Class *
+                      </label>
+                      <input
+                        id="invite-dept"
+                        type="text"
+                        required
+                        value={inviteDepartment}
+                        onChange={(e) => setInviteDepartment(e.target.value)}
+                        placeholder="e.g. Physics Dept"
+                        className="w-full text-xs rounded-lg border border-slate-300 px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-700"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3 text-[11px] text-slate-600 leading-relaxed">
+                    <strong>Organisation Security Policy:</strong> Public self-registration is permanently disabled. The recipient will receive an official invitation email with a secure setup token to establish their own password.
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setIsInviteOpen(false)}
+                      disabled={inviteSubmitting}
+                      className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={inviteSubmitting || !inviteEmail.trim() || !inviteName.trim()}
+                      className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-teal-800 hover:bg-teal-900 text-white text-xs font-semibold rounded-md shadow-sm disabled:opacity-50 transition-colors"
+                    >
+                      {inviteSubmitting ? (
+                        <>
+                          <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Sending Invite...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="w-3.5 h-3.5" />
+                          <span>Send Invitation</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -262,21 +262,130 @@ class ApiService {
       password,
     });
     if (error || !data.session) {
-      throw new Error(error?.message || 'Supabase authentication failed. Please check your credentials.');
+      const msg = error?.message?.toLowerCase() || '';
+      if (msg.includes('invalid') || msg.includes('credential')) {
+        throw new Error('Invalid email or password. Please verify your credentials and try again.');
+      }
+      if (msg.includes('email not confirmed')) {
+        throw new Error('Your email address has not been verified. Please confirm your email via the link sent to your inbox.');
+      }
+      throw new Error(error?.message || 'Authentication failed. Please check your credentials.');
     }
     this.token = data.session.access_token;
     localStorage.setItem(SESSION_TOKEN_KEY, data.session.access_token);
+
     // Fetch state with verified token
     const res = await this.fetchState();
     if (!res.viewer) {
       await supabase.auth.signOut().catch(() => {});
       this.setSession(null, null);
       throw new Error(
-        `User '${email}' was authenticated by Supabase Auth, but no authorized campus profile was found in the database. Please contact your campus administrator.`
+        'User was authenticated by Supabase Auth, but no active campus organisation membership was found. Access is restricted to organisation-authorised members.'
       );
     }
+
+    if (res.viewer.status === 'inactive') {
+      await supabase.auth.signOut().catch(() => {});
+      this.setSession(null, null);
+      throw new Error(
+        'Your organisation membership is currently inactive. Please contact your campus administrator for reactivation.'
+      );
+    }
+
+    if (res.viewer.status === 'invited') {
+      await supabase.auth.signOut().catch(() => {});
+      this.setSession(null, null);
+      throw new Error(
+        'Your account invitation is pending password setup. Please use the secure setup link sent to your email.'
+      );
+    }
+
+    if (res.viewer.emailVerified === false) {
+      await supabase.auth.signOut().catch(() => {});
+      this.setSession(null, null);
+      throw new Error(
+        'Your email address has not been verified. Please confirm your email address before signing in.'
+      );
+    }
+
     this.setSession(data.session.access_token, res.viewer.id);
     return { user: res.viewer, state: res.state };
+  }
+
+  async sendPasswordResetEmail(email: string): Promise<{ success: boolean; message: string }> {
+    if (!supabase) {
+      throw new Error('Supabase client is not configured in this environment.');
+    }
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      throw new Error('Please enter your registered organisation email.');
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/#type=recovery` : undefined,
+    });
+
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('smtp') || msg.includes('provider') || msg.includes('not configured')) {
+        throw new Error(
+          `Supabase email delivery error: ${error.message}. Please configure SMTP or custom email provider in your Supabase project settings.`
+        );
+      }
+      if (msg.includes('rate limit')) {
+        throw new Error('Too many requests. Please wait a few minutes before requesting another reset email.');
+      }
+      // For general errors that might reveal user existence, return safe message
+      console.warn('[Supabase Auth Reset Notice]:', error.message);
+    }
+
+    // Safe generic success message preventing account enumeration
+    return {
+      success: true,
+      message: 'If an active organisation account exists for that email, a password reset link has been dispatched. Please check your inbox and spam folder.',
+    };
+  }
+
+  async updatePassword(newPassword: string): Promise<{ user: User; state: AppDatabaseState }> {
+    if (!supabase) {
+      throw new Error('Supabase client is not configured in this environment.');
+    }
+    if (!newPassword || newPassword.length < 8) {
+      throw new Error('Password must be at least 8 characters long.');
+    }
+
+    const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error || !data.user) {
+      throw new Error(error?.message || 'Failed to update password. Please try requesting a new reset link.');
+    }
+
+    const res = await this.fetchState();
+    if (!res.viewer) {
+      throw new Error('Password updated, but could not load organisation profile.');
+    }
+    return { user: res.viewer, state: res.state };
+  }
+
+  async inviteMember(payload: {
+    email: string;
+    name: string;
+    role: UserRole;
+    department: string;
+  }): Promise<{ success: boolean; message: string; member: User; state: AppDatabaseState }> {
+    return this.request<{ success: boolean; message: string; member: User; state: AppDatabaseState }>('/api/admin/members/invite', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateMemberStatus(
+    userId: string,
+    status: 'active' | 'inactive'
+  ): Promise<{ success: boolean; message: string; member: User; state: AppDatabaseState }> {
+    return this.request<{ success: boolean; message: string; member: User; state: AppDatabaseState }>(`/api/admin/members/${userId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
   }
 
   async signOutWithSupabaseAuth(): Promise<void> {

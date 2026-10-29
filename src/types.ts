@@ -1,4 +1,5 @@
-export type UserRole = 'student' | 'manager' | 'admin';
+export type UserRole = 'student' | 'faculty' | 'manager' | 'admin';
+export type MemberStatus = 'active' | 'inactive' | 'invited';
 
 export interface User {
   id: string;
@@ -9,6 +10,30 @@ export interface User {
   role: UserRole;
   completedSafetyModules: string[];
   activeRestrictions: string | null;
+  organizationId?: string;
+  organizationName?: string;
+  status?: MemberStatus;
+  emailVerified?: boolean;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+}
+
+export interface OrganizationInvitation {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: UserRole;
+  name: string;
+  department: string;
+  invitedByUserId?: string;
+  expiresAt: string;
+  status: 'pending' | 'accepted' | 'expired' | 'revoked';
+  createdAt: string;
 }
 
 export type ResourceCategory =
@@ -52,6 +77,7 @@ export interface Resource {
   managerName: string;
   isDemoListing: boolean;
   specifications: Record<string, string>;
+  organizationId?: string;
 }
 
 export type BookingStatus =
@@ -135,6 +161,7 @@ export interface BookingRequest {
   beforeConditionReport?: ConditionReport;
   afterConditionReport?: ConditionReport;
   flaggedMissingReport?: boolean;
+  organizationId?: string;
 }
 
 export type IncidentCategory =
@@ -170,6 +197,7 @@ export interface IncidentReport {
   humanReviewRequired: boolean;
   createdAt: string;
   updatedAt: string;
+  organizationId?: string;
 }
 
 export interface AuditEvent {
@@ -191,11 +219,14 @@ export interface AuditEvent {
     | 'RESOURCE_CREATED'
     | 'RESOURCE_UPDATED'
     | 'ROLE_UPDATED'
-    | 'POLICY_UPDATED';
-  targetType: 'Resource' | 'Booking' | 'Incident' | 'User' | 'Policy';
+    | 'POLICY_UPDATED'
+    | 'MEMBER_INVITED'
+    | 'MEMBER_STATUS_UPDATED';
+  targetType: 'Resource' | 'Booking' | 'Incident' | 'User' | 'Policy' | 'Organization';
   targetId: string;
   summary: string;
   metadata?: string;
+  organizationId?: string;
 }
 
 export interface PlatformPolicySettings {
@@ -216,4 +247,6 @@ export interface AppDatabaseState {
   incidents: IncidentReport[];
   auditEvents: AuditEvent[];
   policy: PlatformPolicySettings;
+  organizations?: Organization[];
+  invitations?: OrganizationInvitation[];
 }

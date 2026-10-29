@@ -301,6 +301,27 @@ export function App() {
     showToast('Campus sharing policy updated.');
   };
 
+  const handleInviteMember = async (payload: {
+    email: string;
+    name: string;
+    role: UserRole;
+    department: string;
+  }) => {
+    const res = await api.inviteMember(payload);
+    const { state: updatedState } = await api.fetchState();
+    setDbState(updatedState);
+    showToast(res.message);
+    return res;
+  };
+
+  const handleUpdateMemberStatus = async (userId: string, status: 'active' | 'inactive') => {
+    const res = await api.updateMemberStatus(userId, status);
+    const { state: updatedState } = await api.fetchState();
+    setDbState(updatedState);
+    showToast(res.message);
+    return res;
+  };
+
   const handleCancelBooking = async (bookingId: string) => {
     const res = await api.cancelBooking(bookingId);
     setDbState(res.state);
@@ -878,6 +899,8 @@ export function App() {
                     policy={dbState.policy}
                     onUpdateUserRole={handleUpdateUserRole}
                     onUpdatePolicy={handleUpdatePolicy}
+                    onInviteMember={handleInviteMember}
+                    onUpdateMemberStatus={handleUpdateMemberStatus}
                   />
                 ) : (
                   <div className="p-8 text-center bg-white border border-slate-200 rounded-xl space-y-3">
