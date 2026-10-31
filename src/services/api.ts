@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { INITIAL_DATABASE_STATE } from '../data/seedData';
 import {
   AppDatabaseState,
+  AiIncidentAnalysis,
   BookingRequest,
   ConditionReport,
   IncidentReport,
@@ -217,6 +218,22 @@ class ApiService {
   ): Promise<{ incident: IncidentReport; state: AppDatabaseState }> {
     return this.request(`/api/incidents/${incidentId}`, {
       method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async analyzeIncidentWithAI(payload: {
+    incidentId: string;
+    description: string;
+    category?: string;
+    severity?: string;
+    resourceName?: string;
+    resourceCode?: string;
+    resourceCategory?: string;
+    location?: string;
+  }): Promise<{ analysis: AiIncidentAnalysis }> {
+    return this.request('/api/ai/analyze-incident', {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
   }

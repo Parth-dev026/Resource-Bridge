@@ -200,6 +200,13 @@ export interface IncidentReport {
   organizationId?: string;
 }
 
+export interface AiIncidentAnalysis {
+  summary: string;
+  category: string;
+  priority: 'Low' | 'Medium' | 'High';
+  recommendedNextAction: string;
+}
+
 export interface AuditEvent {
   id: string;
   timestamp: string;

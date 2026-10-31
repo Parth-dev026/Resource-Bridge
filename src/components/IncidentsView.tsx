@@ -1,10 +1,16 @@
 import React, { useState } from 'react';
 import {
+  AlertCircle,
+  Bot,
   CheckCircle2,
   FileWarning,
+  Loader2,
+  RefreshCw,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import {
+  AiIncidentAnalysis,
   BookingRequest,
   IncidentCategory,
   IncidentReport,
@@ -14,6 +20,7 @@ import {
   ResourceStatus,
   User,
 } from '../types';
+import { api } from '../services/api';
 
 interface IncidentsViewProps {
   user: User;
@@ -77,7 +84,48 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
   const [reviewNotesMap, setReviewNotesMap] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<'All' | IncidentStatus>('All');
 
-  const isStaff = user.role === 'manager' || user.role === 'admin';
+  // AI Incident Assistant state
+  const [aiAnalysisMap, setAiAnalysisMap] = useState<Record<string, AiIncidentAnalysis>>({});
+  const [aiLoadingMap, setAiLoadingMap] = useState<Record<string, boolean>>({});
+  const [aiErrorMap, setAiErrorMap] = useState<Record<string, string | null>>({});
+
+  const roleStr = String(user?.role || '').toLowerCase().trim();
+  const isStaff =
+    roleStr === 'manager' ||
+    roleStr === 'admin' ||
+    roleStr === 'administrator' ||
+    roleStr.includes('admin') ||
+    roleStr.includes('manager') ||
+    user?.role === 'manager' ||
+    user?.role === 'admin';
+
+  const handleAnalyzeIncident = async (inc: IncidentReport) => {
+    setAiLoadingMap((prev) => ({ ...prev, [inc.id]: true }));
+    setAiErrorMap((prev) => ({ ...prev, [inc.id]: null }));
+
+    const relatedResource = resources.find((r) => r.id === inc.resourceId);
+
+    try {
+      const res = await api.analyzeIncidentWithAI({
+        incidentId: inc.id,
+        description: inc.description,
+        category: inc.category,
+        severity: inc.severity,
+        resourceName: inc.resourceName || relatedResource?.name,
+        resourceCode: inc.resourceCode || relatedResource?.code,
+        resourceCategory: relatedResource?.category,
+        location: relatedResource?.location,
+      });
+      setAiAnalysisMap((prev) => ({ ...prev, [inc.id]: res.analysis }));
+    } catch (err: any) {
+      setAiErrorMap((prev) => ({
+        ...prev,
+        [inc.id]: err?.message || 'Failed to analyze incident with Gemini AI.',
+      }));
+    } finally {
+      setAiLoadingMap((prev) => ({ ...prev, [inc.id]: false }));
+    }
+  };
 
   const myBookings = bookings.filter((b) => b.studentId === user.id);
 
@@ -412,47 +460,175 @@ export const IncidentsView: React.FC<IncidentsViewProps> = ({
                     </div>
                   )}
 
-                  {/* Manager Resolution Controls */}
+                  {/* Staff AI Incident Assistant & Resolution Controls */}
                   {isStaff && (
-                    <div className="pt-3 border-t border-slate-200 space-y-2.5">
-                      <div className="text-xs font-semibold text-slate-800">
-                        Manager Actions &amp; Notes
+                    <div className="pt-3 border-t border-slate-200 space-y-3">
+                      {/* AI Incident Assistant Section */}
+                      <div className="space-y-2 bg-slate-50/70 p-3 rounded-lg border border-slate-200">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                            <Bot className="w-3.5 h-3.5 text-teal-600" />
+                            <span>AI Incident Assistant</span>
+                            <span className="text-[10px] font-normal text-slate-500 uppercase tracking-wide">
+                              (Advisory Only)
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleAnalyzeIncident(inc)}
+                            disabled={aiLoadingMap[inc.id]}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-teal-700 bg-white hover:bg-teal-50 border border-teal-300 rounded shadow-xs transition-colors disabled:opacity-60 cursor-pointer"
+                          >
+                            {aiLoadingMap[inc.id] ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-600" />
+                                <span>Analyzing...</span>
+                              </>
+                            ) : aiAnalysisMap[inc.id] ? (
+                              <>
+                                <RefreshCw className="w-3 h-3 text-teal-600" />
+                                <span>Re-analyze with AI</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                                <span>Analyze with AI</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Loading State */}
+                        {aiLoadingMap[inc.id] && (
+                          <div className="flex items-center gap-2 p-2.5 bg-teal-50/80 border border-teal-200 rounded text-xs text-teal-800">
+                            <Loader2 className="w-4 h-4 animate-spin text-teal-600 shrink-0" />
+                            <span>Gemini is analyzing the incident description and generating triage recommendations...</span>
+                          </div>
+                        )}
+
+                        {/* Error State with Retry */}
+                        {aiErrorMap[inc.id] && !aiLoadingMap[inc.id] && (
+                          <div className="p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-800 flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-1.5">
+                              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="font-semibold">Analysis Failed:</span> {aiErrorMap[inc.id]}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAnalyzeIncident(inc)}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 hover:bg-red-200 text-red-900 rounded font-medium text-[11px] shrink-0"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Retry
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Analysis Results Panel */}
+                        {aiAnalysisMap[inc.id] && !aiLoadingMap[inc.id] && (
+                          <div className="p-3 bg-white border border-teal-200 rounded-md space-y-2 text-xs text-slate-800 shadow-xs">
+                            <div className="flex items-center justify-between pb-1.5 border-b border-teal-100">
+                              <span className="font-semibold text-teal-900 flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                                AI Triage Recommendation
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 text-[11px] font-semibold rounded ${
+                                  aiAnalysisMap[inc.id].priority === 'High'
+                                    ? 'bg-red-100 text-red-800 border border-red-200'
+                                    : aiAnalysisMap[inc.id].priority === 'Medium'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}
+                              >
+                                Priority: {aiAnalysisMap[inc.id].priority}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                              <div>
+                                <span className="font-semibold text-slate-600 block">Incident Category:</span>
+                                <span className="text-slate-900">{aiAnalysisMap[inc.id].category}</span>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-slate-600 block">Summary:</span>
+                                <span className="text-slate-900">{aiAnalysisMap[inc.id].summary}</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-1.5 border-t border-teal-50">
+                              <span className="font-semibold text-slate-600 block mb-0.5">
+                                Recommended Next Action for Staff:
+                              </span>
+                              <div className="p-2 bg-slate-50 rounded border border-slate-200 text-slate-900 flex items-start justify-between gap-2">
+                                <span className="leading-relaxed">{aiAnalysisMap[inc.id].recommendedNextAction}</span>
+                                <button
+                                  type="button"
+                                  title="Copy recommendation into review notes"
+                                  onClick={() =>
+                                    setReviewNotesMap((prev) => ({
+                                      ...prev,
+                                      [inc.id]: aiAnalysisMap[inc.id].recommendedNextAction,
+                                    }))
+                                  }
+                                  className="text-[11px] text-teal-700 hover:text-teal-900 underline whitespace-nowrap shrink-0 font-medium"
+                                >
+                                  Use in notes
+                                </button>
+                              </div>
+                            </div>
+
+                            <p className="text-[10px] text-slate-500 italic pt-0.5">
+                              * Advisory suggestion only. Review and take official action using the buttons below.
+                            </p>
+                          </div>
+                        )}
                       </div>
-                      <input
-                        type="text"
-                        value={
-                          reviewNotesMap[inc.id] !== undefined
-                            ? reviewNotesMap[inc.id]
-                            : inc.managerReviewNotes || ''
-                        }
-                        onChange={(e) =>
-                          setReviewNotesMap((prev) => ({ ...prev, [inc.id]: e.target.value }))
-                        }
-                        placeholder="e.g. 'Replaced broken jumper wire with spare.' or 'Sent for maintenance'..."
-                        className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-teal-600 focus:outline-none"
-                      />
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleManagerUpdate(inc, 'Under Review', 'Maintenance')}
-                          className="px-3 py-1.5 text-xs font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-md hover:bg-amber-200 whitespace-nowrap shrink-0"
-                        >
-                          Mark Under Review (Put in Maintenance)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleManagerUpdate(inc, 'Resolved', 'Available')}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 whitespace-nowrap shrink-0"
-                        >
-                          Mark Resolved (Make Available)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleManagerUpdate(inc, 'Closed')}
-                          className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 whitespace-nowrap shrink-0"
-                        >
-                          Close Issue
-                        </button>
+
+                      {/* Manager Actions & Notes */}
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-slate-800">
+                          Manager Actions &amp; Notes
+                        </div>
+                        <input
+                          type="text"
+                          value={
+                            reviewNotesMap[inc.id] !== undefined
+                              ? reviewNotesMap[inc.id]
+                              : inc.managerReviewNotes || ''
+                          }
+                          onChange={(e) =>
+                            setReviewNotesMap((prev) => ({ ...prev, [inc.id]: e.target.value }))
+                          }
+                          placeholder="e.g. 'Replaced broken jumper wire with spare.' or 'Sent for maintenance'..."
+                          className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-teal-600 focus:outline-none"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleManagerUpdate(inc, 'Under Review', 'Maintenance')}
+                            className="px-3 py-1.5 text-xs font-semibold text-amber-900 bg-amber-100 border border-amber-300 rounded-md hover:bg-amber-200 whitespace-nowrap shrink-0"
+                          >
+                            Mark Under Review (Put in Maintenance)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleManagerUpdate(inc, 'Resolved', 'Available')}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-700 rounded-md hover:bg-emerald-800 whitespace-nowrap shrink-0"
+                          >
+                            Mark Resolved (Make Available)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleManagerUpdate(inc, 'Closed')}
+                            className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200 whitespace-nowrap shrink-0"
+                          >
+                            Close Issue
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}

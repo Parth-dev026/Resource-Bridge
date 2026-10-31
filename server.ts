@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { GoogleGenAI, Type } from '@google/genai';
 import { INITIAL_DATABASE_STATE } from './src/data/seedData';
 import {
   AppDatabaseState,
@@ -64,6 +65,21 @@ if (isSupabaseConfigured) {
   console.log('[ResourceBridge] Connected to Supabase PostgreSQL at:', SUPABASE_URL);
 } else {
   console.log(`[ResourceBridge] Running with local demo dataset (ENABLE_DEMO_MODE=${ENABLE_DEMO_MODE}). Configure SUPABASE_URL in .env to use PostgreSQL.`);
+}
+
+// --- GEMINI AI ASSISTANT INITIALIZATION ---
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const aiClient = GEMINI_API_KEY
+  ? new GoogleGenAI({
+      apiKey: GEMINI_API_KEY,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+    })
+  : null;
+
+if (aiClient) {
+  console.log('[ResourceBridge] Gemini AI Incident Assistant initialized with server-side API key.');
+} else {
+  console.warn('[ResourceBridge] GEMINI_API_KEY not found in environment. AI Incident Assistant endpoint will return 503.');
 }
 
 // --- LOCAL STORE FALLBACK (FOR DEMO MODE) ---
@@ -459,12 +475,28 @@ async function authenticateUser(req: AuthenticatedRequest, _res: Response, next:
     try {
       const { data, error } = await supabaseAdmin.auth.getUser(token);
       if (!error && data?.user) {
-        // Query profile from PostgreSQL database by matching verified auth_user_id
-        const { data: userRecord, error: userDbError } = await supabaseAdmin
+        let { data: userRecord, error: userDbError } = await supabaseAdmin
           .from('users')
           .select('*')
           .eq('auth_user_id', data.user.id)
           .maybeSingle();
+
+        // Fallback: If not yet linked by auth_user_id, match by verified email and auto-link
+        if (!userRecord && data.user.email) {
+          const { data: byEmail } = await supabaseAdmin
+            .from('users')
+            .select('*')
+            .ilike('email', data.user.email)
+            .maybeSingle();
+
+          if (byEmail) {
+            userRecord = byEmail;
+            await supabaseAdmin
+              .from('users')
+              .update({ auth_user_id: data.user.id })
+              .eq('id', byEmail.id);
+          }
+        }
 
         if (userRecord && !userDbError) {
           const userOrgId = userRecord.organization_id || 'org-greenwood-1';
@@ -1483,6 +1515,147 @@ async function startServer() {
         incident: updatedIncident,
         state: sanitizeStateForViewer(updatedState, actor),
       });
+    }
+  );
+
+  // --- AI INCIDENT ASSISTANT (STAFF ONLY) ---
+  app.post(
+    '/api/ai/analyze-incident',
+    requireRole(['manager', 'admin']),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        if (!aiClient) {
+          res.status(503).json({
+            error: 'Gemini AI assistant is not configured. Please ensure GEMINI_API_KEY is set in the server environment.',
+          });
+          return;
+        }
+
+        const {
+          incidentId,
+          description,
+          category,
+          severity,
+          resourceName,
+          resourceCode,
+          resourceCategory,
+          location,
+        } = req.body as {
+          incidentId?: string;
+          description?: string;
+          category?: string;
+          severity?: string;
+          resourceName?: string;
+          resourceCode?: string;
+          resourceCategory?: string;
+          location?: string;
+        };
+
+        if (!incidentId || !incidentId.trim()) {
+          res.status(400).json({ error: 'Valid incident ID is required for AI analysis.' });
+          return;
+        }
+
+        if (!description || !description.trim()) {
+          res.status(400).json({ error: 'Incident description is required for AI analysis.' });
+          return;
+        }
+
+        // Only send non-sensitive technical details (strictly no user identifiers or emails)
+        const prompt = [
+          'You are an educational institution technical equipment custodian and incident triage assistant.',
+          'Analyze the following equipment incident report submitted at an educational campus:',
+          `- Resource: ${resourceName || 'Educational Equipment'} (${resourceCode || 'N/A'})`,
+          `- Category: ${resourceCategory || 'Campus Equipment'}`,
+          `- Location: ${location || 'Campus Lab'}`,
+          `- Reported Incident Category: ${category || 'Unspecified'}`,
+          `- Reported Severity: ${severity || 'Unspecified'}`,
+          '- Incident Description:',
+          `"""${description.trim()}"""`,
+          '',
+          'Provide a concise, objective triage assessment strictly conforming to the requested JSON schema.',
+        ].join('\n');
+
+        const modelCandidates = ['gemini-3.1-flash-lite', 'gemini-3.8-flash'];
+        let rawText: string | null = null;
+        let lastError: Error | null = null;
+
+        for (const candidate of modelCandidates) {
+          try {
+            const geminiRes = await aiClient.models.generateContent({
+              model: candidate,
+              contents: prompt,
+              config: {
+                systemInstruction:
+                  'You are an expert technical equipment custodian assistant in an educational laboratory. Your task is to analyze incident descriptions objectively and provide practical, staff-oriented triage information. Always return valid JSON conforming to the schema.',
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    summary: {
+                      type: Type.STRING,
+                      description: 'Short 1-2 sentence summary of the reported technical issue',
+                    },
+                    category: {
+                      type: Type.STRING,
+                      description: 'Technical categorization of the issue (e.g. Hardware Defect, Accidental Damage, Missing Cable, Component Burnout, Calibration Needed)',
+                    },
+                    priority: {
+                      type: Type.STRING,
+                      enum: ['Low', 'Medium', 'High'],
+                      description: 'Suggested maintenance priority level',
+                    },
+                    recommendedNextAction: {
+                      type: Type.STRING,
+                      description: 'Concrete, practical recommended next action for lab staff/custodian',
+                    },
+                  },
+                  required: ['summary', 'category', 'priority', 'recommendedNextAction'],
+                },
+              },
+            });
+            if (geminiRes.text) {
+              rawText = geminiRes.text;
+              break;
+            }
+          } catch (mErr: any) {
+            lastError = mErr;
+            console.warn(`[Gemini AI] Model ${candidate} request failed, trying next candidate:`, mErr?.message || mErr);
+          }
+        }
+
+        if (!rawText) {
+          throw lastError || new Error('Gemini models returned an empty response.');
+        }
+
+        const parsed = JSON.parse(rawText);
+
+        let priority: 'Low' | 'Medium' | 'High' = 'Medium';
+        if (parsed.priority === 'Low' || parsed.priority === 'Medium' || parsed.priority === 'High') {
+          priority = parsed.priority;
+        }
+
+        res.json({
+          analysis: {
+            summary: String(parsed.summary || 'Summary unavailable.').trim(),
+            category: String(parsed.category || category || 'General Issue').trim(),
+            priority,
+            recommendedNextAction: String(parsed.recommendedNextAction || 'Inspect the resource manually.').trim(),
+          },
+        });
+      } catch (err: any) {
+        console.error(`[Gemini AI] Incident analysis error for incident '${req.body?.incidentId || 'unknown'}':`, err);
+
+        let sanitizedMessage = 'The AI Incident Assistant is momentarily unavailable. Please try again.';
+        const errMsg = String(err?.message || '');
+        if (errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('high demand')) {
+          sanitizedMessage = 'The AI model is experiencing a temporary demand spike. Please retry in a few moments.';
+        } else if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+          sanitizedMessage = 'AI analysis rate limit reached. Please wait a moment before retrying.';
+        }
+
+        res.status(503).json({ error: sanitizedMessage });
+      }
     }
   );
 
